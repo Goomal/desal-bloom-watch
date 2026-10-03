@@ -13,7 +13,7 @@ def frontmatter():
 
 
 def test_codex_link_is_a_relative_symlink_to_the_skill_folder():
-    assert LINK.is_symlink() and os.readlink(LINK) == "../../skill"
+    assert LINK.is_symlink() and Path(os.readlink(LINK)).as_posix() == "../../skill"
     assert (LINK / "SKILL.md").read_text(encoding="utf-8") == SKILL
 
 

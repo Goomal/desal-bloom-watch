@@ -2,6 +2,7 @@
 plus install / status / remove through a fake process runner. Nothing here touches the real launchd, crontab or
 Task Scheduler, and nothing needs the network."""
 import plistlib
+import sys
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -175,6 +176,7 @@ def test_launchd_status_not_loaded_even_if_the_plist_is_left_behind(tmp_path):
 ORIGINAL = "MAILTO=me@example.com\n0 5 * * 1 /usr/bin/backup --weekly\n# my own note\n"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="cron is not on Windows; the POSIX test paths render with backslashes")
 def test_cron_line_quotes_paths_and_runs_from_the_repo_root():
     line = schedule.cron_line(job("01:15", "linux"))
     assert line.startswith("15 1 * * * cd '/Users/someone/desal bloom watch' && ")
