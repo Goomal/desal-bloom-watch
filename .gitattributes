@@ -1,0 +1,4 @@
+# LF everywhere, also on Windows checkouts: the golden fixtures and the score battery are compared byte for byte.
+* text=auto eol=lf
+*.png binary
+*.sqlite binary

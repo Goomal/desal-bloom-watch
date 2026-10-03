@@ -1,6 +1,7 @@
 """`dbw schedule install|status|remove`, the config record of runner and time, and the schedule offer in `dbw setup`.
 launchctl, crontab and schtasks are a fake; the real ones are never called."""
 import plistlib
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -15,6 +16,8 @@ def box(tmp_path, monkeypatch):
     root = tmp_path / "repo"
     (root / ".venv" / "bin").mkdir(parents=True)
     (root / ".venv" / "bin" / "dbw").write_text("", encoding="utf-8")
+    (root / ".venv" / "Scripts").mkdir(parents=True)
+    (root / ".venv" / "Scripts" / "dbw.exe").write_text("", encoding="utf-8")  # where make_job looks on Windows
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
@@ -30,6 +33,9 @@ def box(tmp_path, monkeypatch):
                            plist=agents / "com.desalbloomwatch.dbw.plist", tmp=tmp_path)
 
 
+MAC_ONLY = pytest.mark.skipif(sys.platform == "win32", reason="launchd is macOS only (os.getuid, .venv/bin)")
+
+
 def sched(box, *args):
     return cli.main(["schedule", *args, "--config", box.cfg])
 
@@ -40,6 +46,7 @@ def conf(box):
 
 # --- install -----------------------------------------------------------------------------------------
 
+@MAC_ONLY
 def test_install_launchd_writes_the_plist_loads_it_and_records_runner_and_time(box, capsys):
     assert sched(box, "install", "--runner", "launchd", "--time", "07:05") == 0
     p = plistlib.loads(box.plist.read_bytes())
@@ -64,6 +71,7 @@ def test_install_without_a_runner_uses_the_one_in_the_config_then_the_platform(b
     assert conf(box)["runner"] == "cron" and conf(box)["schedule"]["time"] == "02:00"
 
 
+@MAC_ONLY
 def test_install_twice_is_one_job_and_one_config_entry(box):
     sched(box, "install", "--runner", "launchd", "--time", "07:05")
     sched(box, "install", "--runner", "launchd", "--time", "07:05")
@@ -71,6 +79,7 @@ def test_install_twice_is_one_job_and_one_config_entry(box):
     assert list(conf(box)).count("runner") == 1 and conf(box)["schedule"] == {"time": "07:05"}
 
 
+@MAC_ONLY
 def test_install_reinstall_with_a_new_time_moves_the_job(box):
     sched(box, "install", "--runner", "launchd", "--time", "07:05")
     sched(box, "install", "--runner", "launchd", "--time", "03:30")
@@ -105,6 +114,7 @@ def test_install_needs_the_venv_and_says_how_to_make_it(box):
     assert box.run.calls == []
 
 
+@MAC_ONLY
 def test_dry_run_prints_and_changes_nothing(box, capsys):
     before = box.cfgp.read_text(encoding="utf-8")
     box.cfgp.write_text(before, encoding="utf-8")
@@ -123,6 +133,7 @@ def test_dry_run_needs_neither_a_config_nor_the_venv(box):
 
 # --- status and remove ---------------------------------------------------------------------------------
 
+@MAC_ONLY
 def test_status_before_and_after_install(box, capsys):
     sched(box, "status", "--runner", "launchd")
     assert "installed: no" in capsys.readouterr().out
@@ -138,6 +149,7 @@ def test_status_before_and_after_install(box, capsys):
         assert needle in out, needle
 
 
+@MAC_ONLY
 def test_status_with_no_log_says_never_ran(box, capsys):
     sched(box, "install", "--runner", "launchd")
     capsys.readouterr()
@@ -145,6 +157,7 @@ def test_status_with_no_log_says_never_ran(box, capsys):
     assert "last run: never" in capsys.readouterr().out
 
 
+@MAC_ONLY
 def test_remove_takes_the_job_and_leaves_config_and_data(box, capsys):
     sched(box, "install", "--runner", "launchd", "--time", "07:05")
     (box.root / "data").mkdir(exist_ok=True)
@@ -155,6 +168,7 @@ def test_remove_takes_the_job_and_leaves_config_and_data(box, capsys):
     assert "removed" in capsys.readouterr().out
 
 
+@MAC_ONLY
 def test_remove_when_nothing_is_installed_is_not_an_error(box, capsys):
     box.run.answers[("launchctl", "bootout")] = (113, "", "Could not find service")  # what launchctl says for an absent job
     assert sched(box, "remove", "--runner", "launchd") == 0
