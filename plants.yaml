@@ -1,0 +1,408 @@
+# plants.yaml — public registry of Israeli seawater desalination plants + upstream sentinels.
+#
+# HARD RULE: public sources only. Every non-null plant field has a public URL under that
+# plant's `sources:` map. A field with no public source is `null`, never guessed.
+# Validate with:  python3 scripts/check_registry.py plants.yaml
+#
+# SCHEMA
+#   plants.<id>:
+#     name               display name
+#     sea                mediterranean | red_sea
+#     onshore            {lat, lon}  plant location (WGS84, decimal degrees)
+#     intake_box         closed polygon, list of [lat, lon] points (first == last), around the
+#                        intake head; this is the area the satellite statistics are taken over
+#     intake_box_basis   published | derived | estimated
+#                          published  = coordinates of the intake head are public
+#                          derived    = computed from published distances + a public coordinate
+#                          estimated  = stated-size box seaward of the plant, reasoning in
+#                                       intake_box_reasoning (intake location not public)
+#     intake_box_reasoning  free text, required when basis is `estimated`/`derived`
+#     intake_depth_m     depth of the intake head, metres
+#     intake_distance_m  distance of the intake head from shore, metres
+#     pretreatment       DAF | UF | MMF   (MMF = multi-media/dual-media gravity filtration)
+#     capacity           free text as stated by the source, with unit
+#     status             operating | under_construction | ...
+#     sentinels          ids from `sentinels:` that are upstream early-warning points
+#     notes              free text (conflicting sources, caveats)
+#     sources            map: field name -> public URL (or list of URLs)
+#
+#   sentinels.<id>: name, sea, location {lat, lon}, box (closed polygon), box_basis, sources.
+#     Sentinels are not plants: location + box + source only.
+#
+# LOCAL OVERRIDE
+#   Put private or corrected values in `plants.local.yaml` next to this file (same schema,
+#   same ids; any field you set replaces the public one). It is in .gitignore and is never
+#   committed. The public registry holds public-source facts only.
+#
+# Coordinates: WGS84 [lat, lon]. OSM = OpenStreetMap (ODbL). Data pulled 2026-10-01.
+
+plants:
+
+  hadera:
+    name: Hadera
+    sea: mediterranean
+    onshore: {lat: 32.47074, lon: 34.89048}
+    intake_box:
+      - [32.455, 34.855]
+      - [32.455, 34.880]
+      - [32.485, 34.880]
+      - [32.485, 34.855]
+      - [32.455, 34.855]
+    intake_box_basis: estimated
+    intake_box_reasoning: >-
+      Intake-head coordinates are not published. Onshore point is the centre of the Orot Rabin
+      power-station site (OSM), which IDE gives as the plant location. IDE states three 1.8 m
+      pipes 1.25 km long; the pipe contractor states 1500 m from the beach. Box spans 1.0-3.3 km
+      west of the onshore point, ~3.3 km north-south, to cover both figures. ~2.3 x 3.3 km.
+    intake_depth_m: 18
+    intake_distance_m: 1250
+    pretreatment: MMF
+    capacity: "137 MCM/yr (max potential 160 MCM/yr)"
+    status: operating
+    sentinels: [port_said, el_arish, rafah]
+    notes: >-
+      Distance conflict between sources (1250 m IDE vs 1500 m contractor). Depth 18 m is from
+      the pipe contractor only. Commissioned 2009, operation from Jan 2010 (IDE).
+    sources:
+      name: https://ide-tech.com/wp-content/uploads/2023/01/IDE-Hadera_Project.pdf
+      sea: https://ide-tech.com/wp-content/uploads/2023/01/IDE-Hadera_Project.pdf
+      onshore:
+        - https://www.openstreetmap.org/way/24694956
+        - https://ide-tech.com/wp-content/uploads/2023/01/IDE-Hadera_Project.pdf
+      intake_box:
+        - https://www.openstreetmap.org/way/24694956
+        - https://ide-tech.com/wp-content/uploads/2023/01/IDE-Hadera_Project.pdf
+        - https://www.merterre.com/hadera-desalination-plant/
+      intake_depth_m: https://www.merterre.com/hadera-desalination-plant/
+      intake_distance_m: https://ide-tech.com/wp-content/uploads/2023/01/IDE-Hadera_Project.pdf
+      pretreatment: https://ide-tech.com/wp-content/uploads/2023/01/IDE-Hadera_Project.pdf
+      capacity: https://ide-tech.com/wp-content/uploads/2023/01/IDE-Hadera_Project.pdf
+      status: https://ide-tech.com/wp-content/uploads/2023/01/IDE-Hadera_Project.pdf
+
+  sorek_a:
+    name: Sorek A
+    sea: mediterranean
+    onshore: {lat: 31.94307, lon: 34.73433}
+    intake_box:
+      - [31.930, 34.665]
+      - [31.930, 34.695]
+      - [31.955, 34.695]
+      - [31.955, 34.665]
+      - [31.930, 34.665]
+    intake_box_basis: estimated
+    intake_box_reasoning: >-
+      Intake-head coordinates, distance and depth for Sorek A are not stated in the sources
+      read. Box is seaward (west) of the OSM plant site, 3.7-6.5 km west of the onshore point,
+      ~2.8 x 2.8 km. Sorek B states a 1.5 km marine intake on the same
+      coast, so the coast is assumed ~34.70 E here.
+    intake_depth_m: null
+    intake_distance_m: null
+    pretreatment: null
+    capacity: "624,000 m3/day"
+    status: operating
+    sentinels: [port_said, el_arish, rafah]
+    notes: Commissioned 2013 (IDE). Pretreatment type for Sorek A not found in a public source read.
+    sources:
+      name: https://ide-tech.com/wp-content/uploads/2023/01/Sorek-I-Desalination-Plant-Overview.pdf
+      sea: https://ide-tech.com/wp-content/uploads/2023/01/Sorek-I-Desalination-Plant-Overview.pdf
+      onshore: https://www.openstreetmap.org/way/318353413
+      intake_box:
+        - https://www.openstreetmap.org/way/318353413
+        - https://ide-tech.com/wp-content/uploads/2023/01/SOREK-II-2022-.pdf
+      capacity: https://ide-tech.com/wp-content/uploads/2023/01/Sorek-I-Desalination-Plant-Overview.pdf
+      status: https://ide-tech.com/wp-content/uploads/2023/01/Sorek-I-Desalination-Plant-Overview.pdf
+
+  sorek_b:
+    name: Sorek B
+    sea: mediterranean
+    onshore: null
+    intake_box:
+      - [31.930, 34.665]
+      - [31.930, 34.695]
+      - [31.955, 34.695]
+      - [31.955, 34.665]
+      - [31.930, 34.665]
+    intake_box_basis: estimated
+    intake_box_reasoning: >-
+      The Sorek B site coordinate is not in any public source read (OSM tags only one
+      "Sorek Desalination Plant", used for Sorek A). IDE gives a 1.5 km marine intake. The box
+      is the same as Sorek A's: both lie on the same coast stretch and fall in the same 4 km
+      pixel. Confirm the Sorek B site before any 300 m use.
+    intake_depth_m: null
+    intake_distance_m: 1500
+    pretreatment: MMF
+    capacity: "555,000 m3/day contracted (200 MCM/yr); 672,000 m3/day installed"
+    status: operating
+    sentinels: [port_said, el_arish, rafah]
+    notes: >-
+      Intake distance is the marine part of the intake line (3.25 km total, 1.5 km marine,
+      2 x 2600 mm). Status "operating" per ENR 2026-09-08 (reduced capacity during the Sept 2026
+      algae event).
+    sources:
+      name: https://ide-tech.com/wp-content/uploads/2023/01/SOREK-II-2022-.pdf
+      sea: https://ide-tech.com/wp-content/uploads/2023/01/SOREK-II-2022-.pdf
+      intake_box:
+        - https://www.openstreetmap.org/way/318353413
+        - https://ide-tech.com/wp-content/uploads/2023/01/SOREK-II-2022-.pdf
+      intake_distance_m: https://ide-tech.com/wp-content/uploads/2023/01/SOREK-II-2022-.pdf
+      pretreatment: https://ide-tech.com/wp-content/uploads/2023/01/SOREK-II-2022-.pdf
+      capacity: https://ide-tech.com/wp-content/uploads/2023/01/SOREK-II-2022-.pdf
+      status: https://www.enr.com/articles/63627-algae-bloom-disrupts-five-plants-in-desalination-dependent-israel
+
+  palmachim:
+    name: Palmachim
+    sea: mediterranean
+    onshore: {lat: 31.93659, lon: 34.71198}
+    intake_box:
+      - [31.920, 34.650]
+      - [31.920, 34.690]
+      - [31.950, 34.690]
+      - [31.950, 34.650]
+      - [31.920, 34.650]
+    intake_box_basis: estimated
+    intake_box_reasoning: >-
+      Intake-head coordinates and depth are not published. The 2010 Energy Recovery paper
+      states an open-sea intake 1.4 km in the sea. Plant site (OSM) sits at the coast, so the box spans ~2.1-5.9 km west
+      of the onshore point, ~3.3 km north-south, ~3.8 x 3.3 km. Overlaps the Sorek box.
+    intake_depth_m: null
+    intake_distance_m: 1400
+    pretreatment: MMF
+    capacity: "90-105 MCM/yr (MoEP status 2021)"
+    status: operating
+    sentinels: [port_said, el_arish, rafah]
+    notes: Palmachim 1 commissioned May 2007; Palmachim 2 expansion later (Energy Recovery paper).
+    sources:
+      name: https://www.gov.il/he/pages/desalination_facilities_moep_policy
+      sea: https://www.gov.il/he/pages/desalination_facilities_moep_policy
+      onshore: https://www.openstreetmap.org/way/439666802
+      intake_box:
+        - https://www.openstreetmap.org/way/439666802
+        - https://energyrecovery.com/wp-content/uploads/2023/11/upgrade_Energy_recovery.pdf
+      intake_distance_m: https://energyrecovery.com/wp-content/uploads/2023/11/upgrade_Energy_recovery.pdf
+      pretreatment: https://energyrecovery.com/wp-content/uploads/2023/11/upgrade_Energy_recovery.pdf
+      capacity: https://www.gov.il/he/pages/desalination_facilities_moep_policy
+      status: https://energyrecovery.com/wp-content/uploads/2023/11/upgrade_Energy_recovery.pdf
+
+  ashdod:
+    name: Ashdod (Mekorot)
+    sea: mediterranean
+    onshore: {lat: 31.84957, lon: 34.68792}
+    intake_box:
+      - [31.840, 34.632]
+      - [31.840, 34.656]
+      - [31.860, 34.656]
+      - [31.860, 34.632]
+      - [31.840, 34.632]
+    intake_box_basis: derived
+    intake_box_reasoning: >-
+      From the 2009 environmental summary (design basis): plant ~2,700 m east of the shoreline,
+      intake heads ~1,450 m west of the coastline, at 15 m depth, three heads >=50 m apart. With
+      the OSM plant point and a N-S shoreline, the intake lies near 31.8496 N, 34.644 E. Box is
+      +-1.1 km north-south and +-1.1 km east-west around it. Design-basis numbers, not as-built.
+    intake_depth_m: 15
+    intake_distance_m: 1450
+    pretreatment: UF
+    capacity: "100 MCM/yr"
+    status: operating
+    sentinels: [port_said, el_arish, rafah]
+    notes: >-
+      Pretreatment: the 2009 design document selected sand filters on cost grounds; the Israel
+      Desalination Society page (operating plant, since 2015) describes UF. UF recorded.
+    sources:
+      name: https://ildesal.org.il/ashdod-desalination-plant/
+      sea: https://ildesal.org.il/ashdod-desalination-plant/
+      onshore: https://www.openstreetmap.org/way/555185946
+      intake_box:
+        - https://www.openstreetmap.org/way/555185946
+        - https://www.eib.org/files/pipeline/20090602_nts_en.pdf
+      intake_depth_m: https://www.eib.org/files/pipeline/20090602_nts_en.pdf
+      intake_distance_m: https://www.eib.org/files/pipeline/20090602_nts_en.pdf
+      pretreatment: https://ildesal.org.il/ashdod-desalination-plant/
+      capacity: https://ildesal.org.il/ashdod-desalination-plant/
+      status: https://ildesal.org.il/ashdod-desalination-plant/
+
+  ashkelon:
+    name: Ashkelon
+    sea: mediterranean
+    onshore: null
+    intake_box:
+      - [31.600, 34.440]
+      - [31.600, 34.495]
+      - [31.660, 34.495]
+      - [31.660, 34.440]
+      - [31.600, 34.440]
+    intake_box_basis: estimated
+    intake_box_reasoning: >-
+      The Ashkelon plant site and intake head are not in any public coordinate source read (OSM
+      has no tagged desalination plant here). Box is the open sea off the Ashkelon coast
+      (coast ~34.52 E at 31.63 N per OSM Rutenberg/Dorad plant outlines), 2.4-8 km offshore,
+      ~6.7 x 5.2 km. Intake distance/depth not published in the sources read.
+    intake_depth_m: null
+    intake_distance_m: null
+    pretreatment: MMF
+    capacity: "~120 MCM/yr (intake >330,000 m3/day)"
+    status: operating
+    sentinels: [port_said, el_arish, rafah]
+    notes: Operating since 2005 (Veridis). Pretreatment "coagulation-enhanced dual-media filters" per ENR.
+    sources:
+      name: https://veridis.co.il/en/water/
+      sea: https://veridis.co.il/en/water/
+      intake_box:
+        - https://www.openstreetmap.org/way/95517408
+        - https://veridis.co.il/en/water/
+      pretreatment: https://www.enr.com/articles/63627-algae-bloom-disrupts-five-plants-in-desalination-dependent-israel
+      capacity: https://veridis.co.il/en/water/
+      status: https://veridis.co.il/en/water/
+
+  western_galilee:
+    name: Western Galilee
+    sea: mediterranean
+    onshore: {lat: 32.96367, lon: 35.08794}
+    intake_box:
+      - [32.945, 35.040]
+      - [32.945, 35.070]
+      - [32.980, 35.070]
+      - [32.980, 35.040]
+      - [32.945, 35.040]
+    intake_box_basis: estimated
+    intake_box_reasoning: >-
+      Plant is under construction; intake route is not public. IDE places it ~1 km inland.
+      Box is the open sea west of the OSM plant site (coast ~35.08 E), 1-5 km offshore,
+      ~2.8 x 3.9 km. Re-do when an EIA or tender drawing gives the intake.
+    intake_depth_m: null
+    intake_distance_m: null
+    pretreatment: null
+    capacity: "380,000 m3/day (100 MCM/yr)"
+    status: under_construction
+    sentinels: [port_said, el_arish, rafah]
+    notes: IDE page says commissioning "2026 exp."
+    sources:
+      name: https://ide-tech.com/en/project/western-galilee-desalination-plant-israel/
+      sea: https://ide-tech.com/en/project/western-galilee-desalination-plant-israel/
+      onshore: https://www.openstreetmap.org/way/1445712416
+      intake_box:
+        - https://www.openstreetmap.org/way/1445712416
+        - https://ide-tech.com/en/project/western-galilee-desalination-plant-israel/
+      capacity: https://ide-tech.com/en/project/western-galilee-desalination-plant-israel/
+      status: https://ide-tech.com/en/project/western-galilee-desalination-plant-israel/
+
+  eilat:
+    name: Eilat seawater desalination (Mekorot)
+    sea: red_sea
+    onshore: null
+    intake_box:
+      - [29.480, 34.940]
+      - [29.480, 34.980]
+      - [29.530, 34.980]
+      - [29.530, 34.940]
+      - [29.480, 34.940]
+    intake_box_basis: estimated
+    intake_box_reasoning: >-
+      Public pages give no plant coordinate or intake location. Box is sea-only water at the
+      head of the Gulf of Aqaba east of the Port of Eilat (OSM), ~3.9 x 5.6 km, kept off the
+      coast to avoid land-adjacent pixels. 3 of 4 CoralTemp pixels in it were valid sea on
+      2026-09-28.
+    intake_depth_m: null
+    intake_distance_m: null
+    pretreatment: null
+    capacity: "approx. 55,000 m3/day water supply (as stated by source)"
+    status: operating
+    sentinels: [tiran, gulf_mid]
+    notes: >-
+      Operating since 1997; desalinates a mix of seawater and brackish-plant brine (source).
+      The 55,000 m3/day figure is the stated supply, not necessarily seawater-RO output.
+    sources:
+      name: https://ildesal.org.il/eilat-sea-water-desalination-plant/
+      sea: https://ildesal.org.il/eilat-sea-water-desalination-plant/
+      intake_box:
+        - https://www.openstreetmap.org/way/93576233
+        - https://ildesal.org.il/eilat-sea-water-desalination-plant/
+      capacity: https://ildesal.org.il/eilat-sea-water-desalination-plant/
+      status: https://ildesal.org.il/eilat-sea-water-desalination-plant/
+
+sentinels:
+
+  port_said:
+    name: Port Said (Nile outflow, upstream of Israel Med coast)
+    sea: mediterranean
+    location: {lat: 31.26324, lon: 32.30551}
+    box:
+      - [31.30, 32.25]
+      - [31.30, 32.45]
+      - [31.40, 32.45]
+      - [31.40, 32.25]
+      - [31.30, 32.25]
+    box_basis: estimated
+    sources:
+      name: https://www.openstreetmap.org/node/27564975
+      sea: https://www.openstreetmap.org/node/27564975
+      location: https://www.openstreetmap.org/node/27564975
+      box: https://www.openstreetmap.org/node/27564975
+
+  el_arish:
+    name: El-Arish
+    sea: mediterranean
+    location: {lat: 31.15150, lon: 33.83109}
+    box:
+      - [31.20, 33.75]
+      - [31.20, 33.90]
+      - [31.30, 33.90]
+      - [31.30, 33.75]
+      - [31.20, 33.75]
+    box_basis: estimated
+    sources:
+      name: https://www.openstreetmap.org/node/768597777
+      sea: https://www.openstreetmap.org/node/768597777
+      location: https://www.openstreetmap.org/node/768597777
+      box: https://www.openstreetmap.org/node/768597777
+
+  rafah:
+    name: Rafah
+    sea: mediterranean
+    location: {lat: 31.28225, lon: 34.25049}
+    box:
+      - [31.28, 34.05]
+      - [31.28, 34.20]
+      - [31.38, 34.20]
+      - [31.38, 34.05]
+      - [31.28, 34.05]
+    box_basis: estimated
+    sources:
+      name: https://www.openstreetmap.org/relation/21037874
+      sea: https://www.openstreetmap.org/relation/21037874
+      location: https://www.openstreetmap.org/relation/21037874
+      box: https://www.openstreetmap.org/relation/21037874
+
+  tiran:
+    name: Strait of Tiran (Tiran Island)
+    sea: red_sea
+    location: {lat: 27.96288, lon: 34.52498}
+    box:
+      - [28.00, 34.55]
+      - [28.00, 34.70]
+      - [28.10, 34.70]
+      - [28.10, 34.55]
+      - [28.00, 34.55]
+    box_basis: estimated
+    sources:
+      name: https://www.openstreetmap.org/relation/4150007
+      sea: https://www.openstreetmap.org/relation/4150007
+      location: https://www.openstreetmap.org/relation/4150007
+      box: https://www.openstreetmap.org/relation/4150007
+
+  gulf_mid:
+    name: Mid-Gulf of Aqaba
+    sea: red_sea
+    location: {lat: 28.73233, lon: 34.71482}
+    box:
+      - [28.70, 34.70]
+      - [28.70, 34.80]
+      - [28.80, 34.80]
+      - [28.80, 34.70]
+      - [28.70, 34.70]
+    box_basis: estimated
+    sources:
+      name: https://www.openstreetmap.org/relation/12165391
+      sea: https://www.openstreetmap.org/relation/12165391
+      location: https://www.openstreetmap.org/relation/12165391
+      box: https://www.openstreetmap.org/relation/12165391

@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Desal Bloom Watch</title>
+<meta name="description" content="A free daily satellite early warning for algae near Israel's seawater desalination plants.">
+<style>
+  :root {
+    --bg: #f7f8f6; --surface: #ffffff; --ink: #14201c; --muted: #55625d; --line: #dfe4e1;
+    --accent: #0f6b5c; --accent-ink: #ffffff; --code: #eef1ef;
+    --green: #2e9e5b; --yellow: #e8b923; --orange: #ee7d17; --red: #d7263d; --grey: #9aa3a0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1513; --surface: #161e1b; --ink: #e6ece9; --muted: #9eaaa5; --line: #2a3531;
+      --accent: #4fc3a8; --accent-ink: #0f1513; --code: #1e2825;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Hebrew", sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 48px 16px 64px; }
+  h1 { font-size: clamp(2rem, 5vw, 2.8rem); line-height: 1.15; margin: 0 0 12px; letter-spacing: -0.02em; }
+  h2 { font-size: 1.35rem; margin: 48px 0 12px; }
+  p { margin: 0 0 14px; }
+  .lede { font-size: 1.15rem; color: var(--muted); max-width: 640px; }
+  .cta { display: flex; flex-wrap: wrap; gap: 10px; margin: 24px 0 8px; }
+  .btn { display: inline-block; padding: 10px 18px; border-radius: 8px; text-decoration: none; font-weight: 600;
+    border: 1px solid var(--line); color: var(--ink); background: var(--surface); }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  a { color: var(--accent); }
+  figure { margin: 32px 0 0; }
+  figure img { width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--line); background: #fff; }
+  figcaption { font-size: 0.9rem; color: var(--muted); margin-top: 8px; }
+  .levels { display: grid; gap: 8px; padding: 0; list-style: none; margin: 0; }
+  .levels li { display: grid; grid-template-columns: 22px 90px 1fr; gap: 10px; align-items: baseline;
+    padding: 10px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+  .dot { width: 14px; height: 14px; border-radius: 50%; display: inline-block; transform: translateY(2px); }
+  .levels b { font-weight: 600; }
+  ol.steps { padding-left: 1.3em; margin: 0; }
+  ol.steps li { margin-bottom: 14px; }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.88em; }
+  code { background: var(--code); padding: 1px 6px; border-radius: 4px; }
+  pre { background: var(--code); padding: 12px 14px; border-radius: 8px; overflow-x: auto; margin: 8px 0 0; }
+  pre code { background: none; padding: 0; }
+  .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  .fact { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+  .fact h3 { font-size: 0.95rem; margin: 0 0 4px; }
+  .fact p { margin: 0; color: var(--muted); font-size: 0.95rem; }
+  .note { border-left: 4px solid var(--orange); background: var(--surface); padding: 12px 16px; border-radius: 0 8px 8px 0; }
+  [dir="rtl"] { text-align: right; }
+  [dir="rtl"] ol.steps { padding-left: 0; padding-right: 1.3em; }
+  footer { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.9rem; }
+  @media (max-width: 520px) { .levels li { grid-template-columns: 22px 1fr; } .levels li span:last-child { grid-column: 2; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Desal Bloom Watch</h1>
+  <p class="lede">A free morning report that warns when algae is building up in the sea in front of Israel's
+    seawater desalination plants, from public NOAA satellite data.</p>
+  <div class="cta">
+    <a class="btn primary" href="https://github.com/Goomal/desal-bloom-watch#install-and-run-it-step-by-step">Install, step by step</a>
+    <a class="btn" href="sample/en/dbw-report-2026-10-03.html">Sample report (English)</a>
+    <a class="btn" href="sample/he/dbw-report-2026-10-03.html">דוח לדוגמה (עברית)</a>
+    <a class="btn" href="https://github.com/Goomal/desal-bloom-watch">Code on GitHub</a>
+  </div>
+
+  <figure>
+    <img src="sample/en/dbw-report-2026-10-03.png" alt="Map of the Israeli coast and the Gulf of Eilat with a coloured marker for each desalination plant">
+    <figcaption>The map from the sample report of 3 October 2026. Example output, kept as it was; not updated.</figcaption>
+  </figure>
+
+  <h2>What it does</h2>
+  <div class="facts">
+    <div class="fact"><h3>Every morning</h3><p>Reads satellite chlorophyll for the water at each plant's intake.</p></div>
+    <div class="fact"><h3>Against its own normal</h3><p>Compares each plant with 6 years of its own history for that time of year.</p></div>
+    <div class="fact"><h3>Early hint upstream</h3><p>Watches Port Said, El-Arish, Rafah and the Strait of Tiran, before a bloom drifts north.</p></div>
+    <div class="fact"><h3>Plain report</h3><p>A coloured card per plant, a map and a short message, in English, Hebrew or Arabic.</p></div>
+    <div class="fact"><h3>Your computer</h3><p>Runs on macOS, Linux or Windows. Optional Telegram message. No accounts, no AI calls.</p></div>
+    <div class="fact"><h3>8 plants</h3><p>Western Galilee, Hadera, Sorek A and B, Palmachim, Ashdod, Ashkelon, Eilat.</p></div>
+  </div>
+
+  <h2>The colours</h2>
+  <ul class="levels">
+    <li><span class="dot" style="background:var(--green)"></span><b>Green</b><span>Within the normal range for this place and season.</span></li>
+    <li><span class="dot" style="background:var(--yellow)"></span><b>Yellow</b><span>Above its usual seasonal high, or above normal and rising for 3 days.</span></li>
+    <li><span class="dot" style="background:var(--orange)"></span><b>Orange</b><span>A seasonal extreme, or yellow with an upstream point already high.</span></li>
+    <li><span class="dot" style="background:var(--red)"></span><b>Red</b><span>Three times the seasonal median or more, or orange two days running.</span></li>
+    <li><span class="dot" style="background:var(--grey)"></span><b>Grey</b><span>No usable satellite view (clouds or old data). Grey is never an all-clear.</span></li>
+  </ul>
+
+  <h2>Get it running in 5 steps</h2>
+  <ol class="steps">
+    <li>Install <a href="https://www.python.org/downloads/">Python 3.11 or newer</a>.</li>
+    <li>Download the project: on GitHub, <b>Code → Download ZIP</b>, or
+      <pre><code>git clone https://github.com/Goomal/desal-bloom-watch.git
+cd desal-bloom-watch</code></pre></li>
+    <li>Install it (macOS / Linux; Windows commands are in the README):
+      <pre><code>python3 -m venv .venv
+.venv/bin/pip install -e .</code></pre></li>
+    <li>Answer a few questions (plants, folder, language, daily run, Telegram):
+      <pre><code>.venv/bin/dbw setup</code></pre></li>
+    <li>Open <code>reports/dbw-report-&lt;today&gt;.html</code>. From now on a new one arrives every morning.</li>
+  </ol>
+  <p>Full guide, Windows commands, Telegram and troubleshooting:
+    <a href="https://github.com/Goomal/desal-bloom-watch#readme">README on GitHub</a>.</p>
+
+  <h2>Know the limits</h2>
+  <p class="note">This is an early warning, not a measurement. The satellite sees only the top few metres of the sea,
+    about 2 days late, in 4–9 km squares. Intakes draw from deeper water. The plant's own analysers stay the real
+    alarm. Personal open-source project, no warranty.</p>
+
+  <section dir="rtl" lang="he">
+    <h2>בעברית</h2>
+    <p>דוח בוקר חינמי שמתריע כשמצטברות אצות בים מול מתקני ההתפלה בישראל, על סמך נתוני לוויין פתוחים של NOAA.
+      כל מתקן מושווה להיסטוריה שלו עצמו באותה עונה ומקבל צבע: ירוק, צהוב, כתום, אדום, או אפור כשאין תצפית שמישה.
+      אפור אף פעם אינו "הכול תקין".</p>
+    <ol class="steps">
+      <li>התקינו Python בגרסה 3.11 ומעלה.</li>
+      <li>הורידו את הפרויקט מ־GitHub (Code ← Download ZIP).</li>
+      <li>בטרמינל, בתיקיית הפרויקט: <code>python3 -m venv .venv</code> ואז <code>.venv/bin/pip install -e .</code></li>
+      <li>הריצו <code>.venv/bin/dbw setup</code> ובחרו מתקנים, תיקייה ושפה <code>he</code>.</li>
+      <li>פתחו את קובץ ה־HTML בתיקיית <code>reports</code>. מעכשיו מגיע דוח חדש כל בוקר.</li>
+    </ol>
+    <p>זו התרעה מוקדמת, לא מדידה. המכשור של המתקן נשאר האזעקה האמיתית.</p>
+  </section>
+
+  <footer>
+    MIT licence © 2026 Shay Levite · Satellite data: NOAA CoastWatch ERDDAP, under each dataset's terms ·
+    Coastline: Natural Earth · <a href="https://github.com/Goomal/desal-bloom-watch">github.com/Goomal/desal-bloom-watch</a>
+  </footer>
+</main>
+</body>
+</html>

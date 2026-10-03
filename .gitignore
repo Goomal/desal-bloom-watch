@@ -1,0 +1,13 @@
+.single-writer
+.claude/
+config.yaml
+reports/
+.env
+plants.local.yaml
+.venv/
+/data/
+*.sqlite
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.DS_Store

@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "desal-bloom-watch"
+version = "0.1.0"
+description = "Daily algae-risk watch for Israeli seawater desalination intakes"
+requires-python = ">=3.11"
+dependencies = ["PyYAML>=6", "matplotlib>=3.8"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+dbw = "dbw.cli:main"
+
+[tool.setuptools]
+packages = ["dbw", "dbw.channels", "dbw.providers"]
+
+[tool.setuptools.package-data]
+dbw = ["data/*.json", "locales/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["live: hits the real services (deselected by default, run with -m live)"]
+addopts = "-m 'not live'"

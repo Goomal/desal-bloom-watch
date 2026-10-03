@@ -1,0 +1,39 @@
+# Copy to config.yaml, or let `dbw setup` write it. config.yaml is gitignored.
+
+# Which plants to score and report on (ids from plants.yaml or plants.local.yaml).
+# Their upstream sentinels come along automatically.
+plants: [eilat, ashkelon]
+
+report:
+  out: ./reports            # folder the report files are written to (dbw-report-<date>.{html,md,png,txt})
+  formats: [html, md, png, txt]  # any of html, md, png, txt (txt = the short message: two sentences per plant)
+  language: en              # en | he | ar: the words of the html, md and txt reports (docs/translations.md).
+                            # The PNG map labels, numbers, units, box ids and dataset names stay English.
+                            # `dbw report --language he` overrides it for one render.
+  basemap: none             # none = bundled coastline, no network. gibs = NASA true-colour underlay
+                            # (manual option; falls back to the plain map with a reason line)
+
+# `dbw setup` loads the percentiles bundled in dbw/data/percentiles.json (docs/percentile-export.md)
+# and fetches only recent days; `dbw setup --full-history` rebuilds them from a full backfill instead.
+
+# The daily run: `dbw schedule install` (or `dbw setup --schedule`) writes these two keys when it installs the job.
+# Documented in docs/schedule.md. Leave them out to have no daily run.
+runner: launchd             # launchd (macOS) | cron (Linux) | schtasks (Windows Task Scheduler)
+schedule:
+  time: '07:00'             # local clock, quoted ('HH:MM'). Any time after the NOAA data lands (about 22:15 UTC, see
+                            # docs/schedule.md) gets the newest day; the default is 07:00 local.
+
+# Channels: where the daily report is delivered. Telegram is built (docs/telegram.md); email, Slack, webhook and a
+# folder copy are not yet, and their keys are ignored.
+# The bot token is a secret: it goes in the .env file next to this one (DBW_TELEGRAM_TOKEN=...), never here.
+# `dbw telegram chat-id --write` fills in the chat id for you; `dbw send-test telegram` checks it.
+channels:
+  telegram:
+    enabled: false          # true = each run sends the short message (the .txt) and the HTML report to every chat below.
+                            # `dbw telegram chat-id --write` turns it on and fills in the id.
+    chat_ids: [123456789]   # your private chat; a group id is negative (-100...). A failed send never stops the report:
+                            # it is logged, and `dbw schedule status` shows "partial: telegram failed".
+  # email: {}  slack: {}  webhook: {}  folder: {}   (not implemented yet)
+
+# Claude Code / Codex skill (/desal-bloom-watch): skill/SKILL.md. Install it with one command from the repo root:
+#   .venv/bin/dbw skill install           (--codex for Codex, --project for this folder only, --force to replace)

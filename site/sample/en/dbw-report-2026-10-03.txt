@@ -1,0 +1,19 @@
+Desal Bloom Watch 2026-10-03
+
+🔴 Sorek A is RED: chlorophyll is 4.3x its seasonal median. 3.42 mg/m³, at or above its seasonal extreme (P97 3.4); satellite data of 1 Oct.
+
+🔴 Sorek B is RED: chlorophyll is 4.3x its seasonal median. 3.42 mg/m³, at or above its seasonal extreme (P97 3.4); satellite data of 1 Oct.
+
+🔴 Palmachim is RED: chlorophyll is 4.8x its seasonal median. 5.33 mg/m³, above its usual seasonal high (P90 3.65); satellite data of 1 Oct.
+
+🟡 Ashdod (Mekorot) is YELLOW: chlorophyll is rising over 3 days while above the seasonal 75th percentile. 4.3 mg/m³, above its usual seasonal range (P75 3.56); satellite data of 1 Oct.
+
+🟡 Ashkelon is YELLOW: chlorophyll is rising over 3 days while above the seasonal 75th percentile. 3.53 mg/m³, above its usual seasonal range (P75 2.28); satellite data of 1 Oct.
+
+🟢 Western Galilee is GREEN: chlorophyll is within its normal range for the season. 0.415 mg/m³, below its seasonal median (P50 0.546); satellite data of 1 Oct.
+
+🟢 Hadera is GREEN: chlorophyll is within its normal range for the season. 0.404 mg/m³, below its seasonal median (P50 0.444); satellite data of 1 Oct.
+
+🟢 Eilat seawater desalination (Mekorot) is GREEN: chlorophyll is within its normal range for the season. 0.0917 mg/m³, below its seasonal median (P50 0.158); satellite data of 1 Oct.
+
+Full report: dbw-report-2026-10-03.html (satellite early warning, not a measurement at the intake)

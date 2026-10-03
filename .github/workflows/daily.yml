@@ -1,0 +1,48 @@
+# Daily Desal Bloom Watch run in GitHub Actions (docs/schedule.md). Set the repository variable DBW_PLANTS
+# (Settings, Secrets and variables, Actions, Variables), e.g. hadera,ashkelon.
+name: daily
+
+on:
+  schedule:
+    # 04:00 UTC = 07:00 Israel summer time (06:00 winter time). NOAA's newest data lands by about 22:15 UTC the
+    # evening before, so any time after that sees the newest day.
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dbw-daily
+  cancel-in-progress: false
+
+jobs:
+  run:
+    if: vars.DBW_PLANTS != ''  # idle until the repository variable is set
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      PYTHONUTF8: "1"
+      # Channels are not implemented yet. When they are, pass their secrets here, for example:
+      # TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Restore the database
+        uses: actions/cache@v4
+        with:
+          path: data
+          key: dbw-data-${{ github.run_id }}
+          restore-keys: dbw-data-
+      # Editable on purpose: the code finds plants.yaml and data/ relative to the checkout.
+      - run: pip install -e .
+      - name: Set up the plants
+        run: dbw setup --plants "${{ vars.DBW_PLANTS }}" --yes
+      - name: Run
+        run: dbw run
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dbw-reports
+          path: reports/
