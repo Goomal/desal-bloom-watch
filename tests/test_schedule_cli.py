@@ -109,6 +109,7 @@ def test_install_needs_a_config_because_the_job_cannot_report_without_one(box):
 
 def test_install_needs_the_venv_and_says_how_to_make_it(box):
     (box.root / ".venv" / "bin" / "dbw").unlink()
+    (box.root / ".venv" / "Scripts" / "dbw.exe").unlink()
     with pytest.raises(SystemExit, match="venv"):
         sched(box, "install", "--runner", "cron")
     assert box.run.calls == []
