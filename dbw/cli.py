@@ -392,17 +392,36 @@ def _install_schedule(args, cfg, dry_run=False):
     return runner, time_text
 
 
-def _chat_id_step(config_path, write, pick):
-    """List the chats that have messaged the bot; with `write`, add the chosen one to the config. -> exit code."""
+def _known_chats(path):
+    """Chats that have messaged the bot: Telegram's pending updates plus the contacts `dbw bot` recorded (once the
+    bot runs, it takes the updates first, and a second reader may get 'Conflict')."""
+    found = {int(c["address"]): {"id": int(c["address"]), "type": c["type"], "name": c["name"], "last": c["last"]}
+             for c in subscribers.contacts(store.connect())}
+    try:
+        updates = telegram.get_updates(_telegram_token(path))
+    except telegram.TelegramError:
+        if not found:
+            raise
+        updates = []
+    for c in telegram.chats_from_updates(updates):
+        found[c["id"]] = c
+    return sorted(found.values(), key=lambda c: -c["last"])
+
+
+def _chat_id_step(config_path, write, pick, admin=False):
+    """List the chats that have messaged the bot; with `write`, add the chosen one to the config (as a report chat,
+    or with `admin` as an admin: private chats only). -> exit code."""
     path = Path(config_path)
     if pick is not None and not write:
         raise SystemExit("--pick works with --write only")
     if write and not path.exists():
         raise SystemExit(f"no {path}: run `dbw setup` first")
     try:
-        chats = telegram.chats_from_updates(telegram.get_updates(_telegram_token(path)))
+        chats = _known_chats(path)
     except telegram.TelegramError as e:
         raise SystemExit(str(e))
+    if admin:
+        chats = [c for c in chats if c["type"] == "private"]
     if not chats:
         print("No chat has messaged the bot yet: send your bot a message first (open it in Telegram and press Start; "
               "for a group, add the bot and write something there), then run this again. Telegram keeps unread "
@@ -410,8 +429,9 @@ def _chat_id_step(config_path, write, pick):
         return 1
     for chat in chats:
         print(f"  {telegram.describe_chat(chat)}")
+    action = "admin-id" if admin else "chat-id"
     if not write:
-        print("To save one: dbw telegram chat-id --write   (add --pick <id> when there are several)")
+        print(f"To save one: dbw telegram {action} --write   (add --pick <id> when there are several)")
         return 0
     if pick is None:
         if len(chats) > 1:
@@ -420,15 +440,19 @@ def _chat_id_step(config_path, write, pick):
     elif str(pick).strip() not in {str(c["id"]) for c in chats}:
         raise SystemExit(f"{pick} is not one of the chats listed above")
     try:
-        config.add_telegram_chat(path, pick)
+        (config.add_telegram_admin if admin else config.add_telegram_chat)(path, pick)
     except (config.ConfigError, ValueError) as e:
         raise SystemExit(str(e))
-    print(f"added {pick} to {path}: telegram is on. Check it with `dbw send-test telegram`.")
+    if admin:
+        print(f"added {pick} to {path} as admin. Restart the bot to use it (`dbw bot install` again, or stop and "
+              f"start `dbw bot run`).")
+    else:
+        print(f"added {pick} to {path}: telegram is on. Check it with `dbw send-test telegram`.")
     return 0
 
 
 def cmd_telegram(args):
-    return _chat_id_step(args.config, args.write, args.pick)
+    return _chat_id_step(args.config, args.write, args.pick, admin=args.action == "admin-id")
 
 
 def _latest_report(cfg):
@@ -680,6 +704,64 @@ def cmd_bot(args):
     return 0
 
 
+def _describe_sub(s):
+    return (f"  {s.id:>3}  {s.name}  {s.channel} {s.address}  {','.join(s.plants)}  {s.language}  "
+            f"added by {s.added_by} {s.created_at[:10]}" + (f"  last sent {s.last_sent}" if s.last_sent else ""))
+
+
+def _subscribers_add(conn):
+    taken = {s.address for s in subscribers.active(conn)}
+    people = [c for c in subscribers.contacts(conn) if c["address"] not in taken]
+    if not people:
+        raise SystemExit("nobody to add: ask them to message the bot first (with `dbw bot` running), then run this again")
+    for i, c in enumerate(people, 1):
+        print(f"  {i:2d}. {c['name']}  ({c['type']} {c['address']})")
+    while True:
+        pick = input("Who (number): ").strip()
+        if pick.isdigit() and 0 < int(pick) <= len(people):
+            break
+        print(f"  not understood: {pick}")
+    person = people[int(pick) - 1]
+    while True:
+        try:
+            name = subscribers.clean_name(input(f"Name [{person['name']}]: ").strip() or person["name"])
+            break
+        except ValueError as e:
+            print(f"  {e}")
+    plants = config.prompt_plants(registry.load(), input_fn=input)  # the default is bound at import: pass it
+    lang = config.prompt_language(input_fn=input)
+    s = subscribers.add(conn, name, "telegram", person["address"], plants, lang, "admin")
+    print(f"added: {_describe_sub(s).strip()}")
+
+
+def cmd_subscribers(args):
+    conn = store.connect()
+    if args.action == "list":
+        rows = subscribers.active(conn)
+        for s in rows:
+            print(_describe_sub(s))
+        if not rows:
+            print("no subscribers yet: people sign up by messaging the bot (`dbw bot`), or use `dbw subscribers add`")
+        return 0
+    if args.action == "add":
+        _subscribers_add(conn)
+        return 0
+    if args.action == "remove":
+        if not (args.id or "").isdigit():
+            raise SystemExit("remove needs the subscriber id: see `dbw subscribers list`")
+        s = subscribers.remove(conn, int(args.id))
+        if s is None:
+            raise SystemExit(f"no active subscriber {args.id}: see `dbw subscribers list`")
+        print(f"removed: {s.id} {s.name} (they are not told; the Telegram /remove tells them)")
+        return 0
+    out = Path(args.out or store.default_path().parent / f"subscribers-{date.today()}.json")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    rows = subscribers.export(conn)
+    out.write_text(json.dumps(rows, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    print(f"exported {len(rows)} rows to {out}")
+    return 0
+
+
 def cmd_doctor(args):
     ok = True
 
@@ -785,11 +867,17 @@ def main(argv=None):
     sc.add_argument("--config", default=str(config.DEFAULT_PATH), help="config.yaml (default ./config.yaml)")
     sc.set_defaults(func=cmd_schedule)
     tg = sub.add_parser("telegram", help="set up the Telegram channel: find the chat id of people who messaged the bot")
-    tg.add_argument("action", choices=("chat-id",))
+    tg.add_argument("action", choices=("chat-id", "admin-id"),
+                    help="chat-id: the chats that get the admin report; admin-id: who may use /add, /remove, /list")
     tg.add_argument("--write", action="store_true", help="add the chat to config.yaml and turn telegram on")
     tg.add_argument("--pick", metavar="ID", help="with --write: which chat, when more than one has messaged the bot")
     tg.add_argument("--config", default=str(config.DEFAULT_PATH), help="config.yaml (default ./config.yaml)")
     tg.set_defaults(func=cmd_telegram)
+    sb = sub.add_parser("subscribers", help="the people who get the daily report: list, add, remove, export")
+    sb.add_argument("action", choices=("list", "add", "remove", "export"))
+    sb.add_argument("id", nargs="?", help="remove: the subscriber id (see `dbw subscribers list`)")
+    sb.add_argument("--out", help="export: the file to write (default data/subscribers-<date>.json)")
+    sb.set_defaults(func=cmd_subscribers)
     st = sub.add_parser("send-test", help="send a test message to every configured chat")
     st.add_argument("channel", choices=("telegram",))
     st.add_argument("--latest", action="store_true", help="also send the newest report's short message and HTML file")
