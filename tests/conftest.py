@@ -1,4 +1,5 @@
-"""Every test starts with no Telegram token and no way to reach Telegram: a test that wants either fakes it."""
+"""Every test starts with no Telegram token and no way to reach Telegram, and its own empty database: a test that wants
+either fakes it."""
 import pytest
 
 
@@ -23,3 +24,9 @@ def no_dns_by_accident(request, monkeypatch):
     from dbw import cli
     monkeypatch.setattr(cli, "_resolve", lambda host, port: [()])
     monkeypatch.setattr(cli, "_sleep", lambda s: None)
+
+
+@pytest.fixture(autouse=True)
+def no_real_database_by_accident(tmp_path, monkeypatch):
+    """A test that sets DBW_DB itself overrides this; nothing ever opens the real data/dbw.sqlite."""
+    monkeypatch.setenv("DBW_DB", str(tmp_path / "auto.sqlite"))
