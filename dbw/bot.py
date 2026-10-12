@@ -17,6 +17,7 @@ FLOWS = {
 BUTTON_STEP = {"lang": "lang", "p": "plants", "ok": "confirm", "m": "menu", "stop": "stop", "add": "add"}
 ADMIN_FLOWS = ("admin", "add")
 STOP_WORDS = ("/stop", "/remove", "stop")
+ADD_LIST_MAX = 30  # contacts offered by /add, newest first (a longer keyboard is unusable)
 
 
 class BotError(Exception):
@@ -291,15 +292,63 @@ class Bot:
         self.notify_admins("bot.admin_new", sub_id=s.id, name=s.name, plants=self.names(self.admin_lang, s.plants),
                            language=self.lang_name(s.language))
 
-    # --- admin (Task 6) -----------------------------------------------------------------------------------------
+    # --- admin --------------------------------------------------------------------------------------------------
+
+    def admin_list(self, chat, user):
+        lang = self.lang_of(chat["id"], user)
+        lines = sorted(self.t(lang, "bot.list_line", name=s.name, plants=self.names(lang, s.plants),
+                              language=self.lang_name(s.language)) for s in subscribers.active(self.conn))
+        self.say(chat["id"], "\n".join(lines) or self.t(lang, "bot.list_empty"))
 
     def admin_add(self, chat, user):
-        raise NotImplementedError
-
-    admin_list = admin_remove = admin_add
+        """Offer 'This chat' (a group, or the admin themselves) and the contacts not yet subscribed."""
+        cid, lang = chat["id"], self.lang_of(chat["id"], user)
+        taken = {s.address for s in subscribers.active(self.conn)}
+        rows = [[(self.t(lang, "bot.this_chat"), "add:here")]] if str(cid) not in taken else []
+        others = [c for c in subscribers.contacts(self.conn) if c["address"] not in taken and c["address"] != str(cid)]
+        rows += [[(c["name"], f"add:{c['address']}")] for c in others[:ADD_LIST_MAX]]
+        if not rows:
+            return self.say(cid, self.t(lang, "bot.add_none"))
+        self.save(cid, "add", {"flow": "add", "ui": lang})
+        self.ask(cid, self.t(lang, "bot.add_pick"), rows)
 
     def admin_pick(self, cid, data, arg):
-        raise NotImplementedError
+        address = str(cid) if arg == "here" else arg
+        contact = next((c for c in subscribers.contacts(self.conn) if c["address"] == address), None)
+        if contact is None:
+            self.end(cid)
+            return self.t(data["ui"], "bot.expired")
+        if self.sub(address):
+            self.end(cid)
+            self.say(cid, self.t(data["ui"], "bot.already", name=contact["name"]))
+            return ""
+        self.prompt(cid, "plants", {"flow": "admin", "ui": data["ui"], "target": address, "name": contact["name"],
+                                    "picked": []})
+        return ""
+
+    def admin_remove(self, chat, user):
+        cid, lang = chat["id"], self.lang_of(chat["id"], user)
+        subs = subscribers.active(self.conn)
+        if not subs:
+            return self.say(cid, self.t(lang, "bot.list_empty"))
+        self.ask(cid, self.t(lang, "bot.remove_pick"), [[(s.name, f"rm:{s.id}")] for s in subs])
 
     def admin_button(self, cid, user, kind, arg):
-        raise NotImplementedError
+        """rm:<id> asks to confirm, rmok:<id> removes, rmno cancels. Stateless: the id travels on the button."""
+        lang = self.lang_of(cid, user)
+        if user not in self.admins:
+            return self.t(lang, "bot.admin_only")
+        if kind == "rmno":
+            self.say(cid, self.t(lang, "bot.cancelled"))
+            return ""
+        s = subscribers.get(self.conn, int(arg)) if arg.isdigit() else None
+        if s is None or s.status != subscribers.ACTIVE:
+            return self.t(lang, "bot.expired")
+        if kind == "rm":
+            self.ask(cid, self.t(lang, "bot.remove_confirm", name=s.name),
+                     [[(self.t(lang, "bot.yes"), f"rmok:{s.id}"), (self.t(lang, "bot.no"), "rmno")]])
+            return ""
+        subscribers.remove(self.conn, s.id)
+        self.tell(s.address, self.t(s.language, "bot.removed_by_admin"))
+        self.say(cid, self.t(lang, "bot.admin_removed", name=s.name))
+        return ""
