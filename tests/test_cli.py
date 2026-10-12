@@ -89,7 +89,7 @@ def test_doctor_reports_unreachable_source(tmp_path, monkeypatch, capsys):
 
     monkeypatch.setattr(cli, "build_providers",
                         lambda names=None: {"src_down": Down(), "src_up": UpNoData()})
-    assert cli.main(["doctor"]) == 1
+    assert cli.main(["doctor", "--config", str(tmp_path / "none.yaml")]) == 1
     out = capsys.readouterr().out
     assert "src_up" in out and "src_down" in out and "FAIL" in out
 
@@ -104,4 +104,43 @@ def test_doctor_ok_when_all_reachable(tmp_path, monkeypatch, capsys):
             return NoData("all_nan: 0/20 valid", total_count=20)
 
     monkeypatch.setattr(cli, "build_providers", lambda names=None: {"src_up": UpNoData()})
-    assert cli.main(["doctor"]) == 0
+    assert cli.main(["doctor", "--config", str(tmp_path / "none.yaml")]) == 0
+
+
+def _doctor_env(tmp_path, monkeypatch):
+    from dbw import config, registry
+    monkeypatch.setenv("DBW_DB", str(tmp_path / "t.sqlite"))
+
+    class Up:
+        source = "src_up"
+
+        def fetch(self, box, day):
+            return NoData("all_nan: 0/20 valid", total_count=20)
+    monkeypatch.setattr(cli, "build_providers", lambda names=None: {"src_up": Up()})
+    p = tmp_path / "config.yaml"
+    config.write(p, ["ashkelon"], tmp_path / "reports", registry.load(), formats=["md"])
+    return p
+
+
+def test_doctor_is_silent_about_the_bot_when_subscriptions_are_not_used(tmp_path, monkeypatch, capsys):
+    p = _doctor_env(tmp_path, monkeypatch)
+    assert cli.main(["doctor", "--config", str(p)]) == 0
+    out = capsys.readouterr().out
+    assert "admin_ids" not in out and "bot:" not in out
+
+
+def test_doctor_checks_admin_ids_and_the_bot_once_subscriptions_are_used(tmp_path, monkeypatch, capsys):
+    from dbw import bot, config, store, subscribers
+    p = _doctor_env(tmp_path, monkeypatch)
+    subscribers.add(store.connect(), "Dana", "telegram", "111", ["hadera"], "he", "self")
+    assert cli.main(["doctor", "--config", str(p)]) == 1
+    out = capsys.readouterr().out
+    assert "FAIL telegram admin_ids: not set" in out and "FAIL bot: not running" in out
+    config.add_telegram_admin(p, 999)
+    held = bot.acquire_lock(bot.lock_path())
+    try:
+        assert cli.main(["doctor", "--config", str(p)]) == 0
+    finally:
+        held.close()
+    out = capsys.readouterr().out
+    assert "OK   telegram admin_ids: 1 set" in out and "OK   bot: running" in out

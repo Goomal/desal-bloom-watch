@@ -784,6 +784,21 @@ def cmd_doctor(args):
         report(True, f"db writable: {store.default_path()}")
     except Exception as e:
         report(False, f"db: {e}")
+    try:
+        cfg = config.load(args.config)
+    except config.ConfigError as e:
+        report(False, f"config: {e}")
+        cfg = None
+    admins = config.telegram_admin_ids(cfg)
+    try:
+        in_use = bool(admins) or bool(subscribers.active(store.connect()))
+    except Exception:
+        in_use = bool(admins)
+    if in_use:  # checked only once subscriptions are used, so nobody else sees a new FAIL
+        report(bool(admins), f"telegram admin_ids: {len(admins)} set" if admins
+               else "telegram admin_ids: not set (run `dbw telegram admin-id --write`)")
+        running = bot.lock_held(bot.lock_path())
+        report(running, "bot: running" if running else "bot: not running (start it with `dbw bot install`)")
     if boxes:
         probe = next(b for b in boxes if b.kind == "plant")
         day = datetime.now(timezone.utc).date() - timedelta(days=5)
@@ -900,7 +915,8 @@ def main(argv=None):
     sk.add_argument("--project", action="store_true", help="install under the current folder instead of your home folder")
     sk.add_argument("--force", action="store_true", help="replace an existing install")
     sk.set_defaults(func=cmd_skill)
-    d = sub.add_parser("doctor", help="check registry, database and source reachability")
+    d = sub.add_parser("doctor", help="check registry, database, source reachability and, once used, the sign-up bot")
+    d.add_argument("--config", default=str(config.DEFAULT_PATH), help="config.yaml (default ./config.yaml)")
     d.set_defaults(func=cmd_doctor)
     for stream in (sys.stdout, sys.stderr):  # Windows consoles default to a legacy codepage; reports are Hebrew/Arabic
         reconfigure = getattr(stream, "reconfigure", None)

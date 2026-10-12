@@ -81,3 +81,32 @@ Telegram bot token: set DBW_TELEGRAM_TOKEN ...`. The token is never written to t
 4. `dbw send-test telegram` sends the test message to every chat in the list.
 
 To stop sending to a chat, delete its id from `chat_ids`; set `enabled: false` to stop sending altogether.
+
+## Subscriptions: a sign-up bot
+
+People can ask for the daily report themselves. Each one picks plants and a language (English, Hebrew or Arabic).
+
+1. Make yourself the admin: message the bot, then `dbw telegram admin-id --write`.
+2. Start the bot and keep it running: `dbw bot install` (starts now and at every login; `dbw bot status`,
+   `dbw bot uninstall`). To try it in the foreground: `dbw bot run` (Ctrl+C stops it).
+   It answers only while this computer is on; messages sent while it is off wait up to 24 hours at Telegram.
+3. Share the bot's link (t.me/<your bot>). A person presses Start, picks a language, a name, the plants, and
+   confirms. You get "New subscriber: ..." with a [Remove] button.
+
+| Who | Sends | What happens |
+|---|---|---|
+| Anyone | `/start` | Sign up; a subscriber gets: change plants, change language, stop |
+| Anyone | `/stop` | Stop the daily report (asks first) |
+| Anyone | `/help` | Short help in their language |
+| Admin | `/add` | Add a chat that has messaged the bot; in a group, "This chat" adds the group |
+| Admin | `/remove` | Remove someone (they are told) |
+| Admin | `/list` | Everyone, with plants and language |
+
+On the computer: `dbw subscribers list`, `dbw subscribers add` (asks in the terminal, from the chats that messaged
+the bot), `dbw subscribers remove <id>` (does not tell them), `dbw subscribers export` (a JSON backup in `data/`).
+
+The daily run (`dbw run`) sends the reports: one report per plants-and-language group, saved under
+`reports/subscribers/<date>/`. Each person gets it once a day; `dbw run --date ...` never sends to subscribers.
+A person who blocks the bot is removed automatically and you are told. If some sends fail,
+`dbw schedule status` shows `partial: telegram failed for N of M`. `dbw doctor` checks the bot and `admin_ids`
+once subscriptions are in use.

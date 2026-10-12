@@ -33,6 +33,8 @@ channels:
                             # `dbw telegram chat-id --write` turns it on and fills in the id.
     chat_ids: [123456789]   # your private chat; a group id is negative (-100...). A failed send never stops the report:
                             # it is logged, and `dbw schedule status` shows "partial: telegram failed".
+    admin_ids: [123456789]  # who may use the bot's /add, /remove and /list (your own Telegram user id = your private
+                            # chat id). `dbw telegram admin-id --write` fills it in. Optional; the bot runs without it.
   # email: {}  slack: {}  webhook: {}  folder: {}   (not implemented yet)
 
 # Claude Code / Codex skill (/desal-bloom-watch): skill/SKILL.md. Install it with one command from the repo root:

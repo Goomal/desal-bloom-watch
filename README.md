@@ -9,6 +9,7 @@ Every day it reads NOAA satellite chlorophyll data for the water in front of eac
 what is normal for that place at that time of year, and gives each plant a colour: 🟢 green, 🟡 yellow, 🟠 orange,
 🔴 red, or ⚪ grey (no usable satellite view). You get the report as a web page, a map and a short message, in
 English, Hebrew or Arabic, on your own computer and, if you want, on Telegram.
+People can also sign up themselves through the bot and choose their plants and language (docs/telegram.md, Subscriptions).
 
 **Website with a sample report:** https://goomal.github.io/desal-bloom-watch/
 
