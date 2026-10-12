@@ -10,7 +10,7 @@ import urllib.parse
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from dbw import assess, bot, climatology, config, i18n, pctl_export, registry, report, schedule, store, subscribers
+from dbw import assess, bot, bot_service, climatology, config, i18n, pctl_export, registry, report, schedule, store, subscribers
 from dbw.channels import telegram
 from dbw.providers import build_providers, gibs, noaa_erddap
 from dbw.providers.base import BoxStats, FetchError, NoData, UpstreamUnreachable
@@ -616,7 +616,35 @@ def _bot_run(args):
 
 
 def cmd_bot(args):
-    return _bot_run(args)
+    if args.action == "run":
+        return _bot_run(args)
+    cfg = _load_config(args) if Path(args.config).exists() else None
+    runner = args.runner or (cfg or {}).get("runner") or schedule.default_runner()
+    try:
+        schedule.check_runner(runner)
+        if args.action == "install":
+            job = bot_service.make_job(_root())
+            job = dataclasses.replace(job, args=job.args + ["--config", str(Path(args.config).resolve())])
+            if not args.dry_run:
+                if not Path(args.config).exists():  # the installed bot would exit and be restarted every minute
+                    raise SystemExit(f"no {args.config}: run `dbw setup` first (the bot reads its admins from it)")
+                if not job.exe.exists():
+                    raise SystemExit(f"{job.exe} not found: make the venv first (python3 -m venv .venv && .venv/bin/pip install .)")
+                job.log.parent.mkdir(parents=True, exist_ok=True)
+            for line in bot_service.install(runner, job, dry_run=args.dry_run):
+                print(line)
+        elif args.action == "uninstall":
+            for line in bot_service.uninstall(runner):
+                print(line)
+        else:
+            log = bot_service.make_job(_root()).log
+            print(f"installed: {'yes' if bot_service.installed(runner) else 'no'} ({runner})")
+            print(f"running: {'yes' if bot.lock_held(bot.lock_path()) else 'no'}")
+            last = log.read_text(encoding="utf-8", errors="replace").splitlines()[-1:] if log.exists() else []
+            print(f"log: {log}" + (f"\nlast line: {last[0]}" if last else ""))
+    except schedule.ScheduleError as e:
+        raise SystemExit(str(e))
+    return 0
 
 
 def cmd_doctor(args):
@@ -735,8 +763,10 @@ def main(argv=None):
     st.add_argument("--config", default=str(config.DEFAULT_PATH), help="config.yaml (default ./config.yaml)")
     st.set_defaults(func=cmd_send_test)
     bt = sub.add_parser("bot", help="the Telegram sign-up bot: run it here, or install it to start at login")
-    bt.add_argument("action", nargs="?", default="run", choices=("run",))
-    bt.add_argument("--log", help="append the bot's lines to this file (the installed bot uses data/dbw-bot.log)")
+    bt.add_argument("action", nargs="?", default="run", choices=("run", "install", "uninstall", "status"))
+    bt.add_argument("--log", help="run: append the bot's lines to this file (the installed bot uses data/dbw-bot.log)")
+    bt.add_argument("--runner", help=f"{', '.join(schedule.RUNNERS)} (default: config.yaml, else this platform's)")
+    bt.add_argument("--dry-run", action="store_true", help="install: print what would be installed, change nothing")
     bt.add_argument("--config", default=str(config.DEFAULT_PATH), help="config.yaml (default ./config.yaml)")
     bt.set_defaults(func=cmd_bot)
     pl = sub.add_parser("plants", help="list the plants, grouped by sea, north to south")
