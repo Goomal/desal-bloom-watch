@@ -55,7 +55,7 @@ def _chat_id_ok(c):
 
 
 def _check_channels(channels):
-    """`channels.telegram`: {enabled: bool, chat_ids: [int or numeric string, ...]}. Channels not built yet are ignored."""
+    """`channels.telegram`: {enabled: bool, chat_ids: [...], admin_ids: [...]}, ids are ints or numeric strings. Channels not built yet are ignored."""
     if channels is None:
         return
     if not isinstance(channels, dict):
@@ -74,12 +74,38 @@ def _check_channels(channels):
     if ids is not None and (not isinstance(ids, list) or not all(_chat_id_ok(c) for c in ids)):
         bad = [c for c in ids if not _chat_id_ok(c)] if isinstance(ids, list) else ids
         raise ConfigError(f"config: channels.telegram.chat_ids must be a list of chat ids (whole numbers), not {bad}")
+    admins = tg.get("admin_ids")
+    if admins is not None and (not isinstance(admins, list) or not all(_chat_id_ok(c) for c in admins)):
+        raise ConfigError(f"config: channels.telegram.admin_ids must be a list of Telegram user ids (whole numbers), "
+                          f"not {admins} (run `dbw telegram admin-id --write`)")
 
 
 def telegram_chat_ids(cfg):
     """The chat ids to send to, as strings; empty when telegram is not enabled (or there is no config)."""
     tg = ((cfg or {}).get("channels") or {}).get("telegram") or {}
     return [str(c).strip() for c in tg.get("chat_ids") or []] if tg.get("enabled") else []
+
+
+def telegram_admin_ids(cfg):
+    """The admins' Telegram user ids (a private chat's id is its user's id), as ints; empty when none are set.
+    Independent of `enabled`: the admin may run the sign-up bot without receiving the admin report."""
+    tg = ((cfg or {}).get("channels") or {}).get("telegram") or {}
+    return [int(str(c).strip()) for c in tg.get("admin_ids") or []]
+
+
+def add_telegram_admin(path, user_id):
+    """Add `user_id` to channels.telegram.admin_ids (once); every other key is kept and telegram is not turned on."""
+    path = Path(path)
+    cfg = check(yaml.safe_load(path.read_text(encoding="utf-8")) or {})
+    tg = cfg.setdefault("channels", {}).setdefault("telegram", {})
+    ids = [int(str(c).strip()) for c in tg.get("admin_ids") or []]
+    new = int(str(user_id).strip())
+    if new not in ids:
+        ids.append(new)
+    cfg["channels"]["telegram"] = {**tg, "admin_ids": ids}
+    check(cfg)
+    path.write_text(HEADER + yaml.safe_dump(cfg, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    return cfg
 
 
 def add_telegram_chat(path, chat_id):

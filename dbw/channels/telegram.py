@@ -19,10 +19,17 @@ MAX_WAIT = 30  # seconds: the longest a retry waits, whatever `retry_after` says
 NETWORK_WAIT = 2  # seconds before the one retry after a network error
 DEFAULT_RETRY_AFTER = 5
 TIMEOUT = 30
+LONG_POLL = 25  # getUpdates long-poll seconds: shorter than TIMEOUT, so the HTTP read never times out first
+CALLBACK_LIMIT = 64  # bytes of callback_data Telegram accepts on a button
 
 
 class TelegramError(Exception):
-    """One plain line the user can act on. Never contains the token."""
+    """One plain line the user can act on. Never contains the token. `code`: the HTTP status when Telegram answered
+    (403 = the person blocked the bot or deleted their account), else None."""
+
+    def __init__(self, message, code=None):
+        super().__init__(message)
+        self.code = code
 
 
 def _sleep(seconds):
@@ -110,7 +117,7 @@ def _call(token, method, body, content_type="application/json"):
             _sleep(min(wait, MAX_WAIT))
             continue
         description = data.get("description")
-        raise TelegramError(redact(f"{method}: HTTP {code}" + (f": {description}" if description else ""), token))
+        raise TelegramError(redact(f"{method}: HTTP {code}" + (f": {description}" if description else ""), token), code)
 
 
 # --- sending ------------------------------------------------------------------------------------------------
@@ -189,11 +196,50 @@ def send_report(token, chat_id, text, html_path, caption):
         send_document(token, chat_id, html_path, caption)
 
 
+def _keyboard(rows):
+    for row in rows:
+        for _, data in row:
+            if len(data.encode("utf-8")) > CALLBACK_LIMIT:
+                raise ValueError(f"button data over {CALLBACK_LIMIT} bytes: {data!r}")
+    return {"inline_keyboard": [[{"text": label, "callback_data": data} for label, data in row] for row in rows]}
+
+
+def send_buttons(token, chat_id, text, rows):
+    """One message with inline buttons; rows = [[(label, callback data), ...], ...]. -> the sent message."""
+    body = {"chat_id": str(chat_id), "text": text, "reply_markup": _keyboard(rows)}
+    return _call(token, "sendMessage", json.dumps(body).encode("utf-8"))
+
+
+def edit_buttons(token, chat_id, message_id, text, rows):
+    """Replace a sent message's text and buttons (rows=[] removes them). Re-sending the same content is not an error."""
+    body = {"chat_id": str(chat_id), "message_id": message_id, "text": text, "reply_markup": _keyboard(rows)}
+    try:
+        _call(token, "editMessageText", json.dumps(body).encode("utf-8"))
+    except TelegramError as e:
+        if "message is not modified" not in str(e):
+            raise
+
+
+def answer_callback(token, callback_id, text=""):
+    """Stop the button's spinner; `text` shows as a short toast."""
+    body = {"callback_query_id": callback_id, **({"text": text} if text else {})}
+    _call(token, "answerCallbackQuery", json.dumps(body).encode("utf-8"))
+
+
 # --- finding a chat id --------------------------------------------------------------------------------------
 
-def get_updates(token):
-    """The pending updates for the bot (what people sent it since it last fetched them; Telegram keeps them 24 h)."""
-    return _call(token, "getUpdates", json.dumps({"timeout": 0}).encode("utf-8")) or []
+def get_updates(token, offset=None, timeout=0):
+    """The pending updates for the bot (what people sent it since it last fetched them; Telegram keeps them 24 h).
+    `offset` confirms every update below it; `timeout` > 0 long-polls. `allowed_updates` is never sent: Telegram
+    remembers it, and `dbw telegram chat-id` needs every update kind."""
+    body = {"timeout": timeout, **({"offset": offset} if offset is not None else {})}
+    return _call(token, "getUpdates", json.dumps(body).encode("utf-8")) or []
+
+
+def chat_name(chat):
+    """A group's title, else a person's first and last name, else @username, else ''."""
+    return (chat.get("title") or " ".join(p for p in (chat.get("first_name"), chat.get("last_name")) if p)
+            or (f"@{chat['username']}" if chat.get("username") else ""))
 
 
 def chats_from_updates(updates):
@@ -204,8 +250,7 @@ def chats_from_updates(updates):
             chat = value.get("chat") if isinstance(value, dict) else None
             if not isinstance(chat, dict) or "id" not in chat:
                 continue
-            name = (chat.get("title") or " ".join(p for p in (chat.get("first_name"), chat.get("last_name")) if p)
-                    or (f"@{chat['username']}" if chat.get("username") else ""))
+            name = chat_name(chat)
             entry = found.setdefault(chat["id"], {"id": chat["id"], "type": chat.get("type", ""), "name": name, "last": 0})
             entry["last"] = max(entry["last"], value.get("date") or 0)
     return sorted(found.values(), key=lambda c: -c["last"])

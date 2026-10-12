@@ -36,6 +36,11 @@ def partial(*reasons):
 PARTIAL = partial(UPSTREAM)
 
 
+def telegram_failed_for(n, m):
+    """The reason when n of the m subscribers due today did not get their report."""
+    return f"{TELEGRAM} for {n} of {m}"
+
+
 class ScheduleError(Exception):
     """A scheduling problem the user can act on; the CLI prints it as one plain line."""
 

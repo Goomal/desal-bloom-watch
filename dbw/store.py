@@ -5,6 +5,7 @@ import sqlite3
 from datetime import date, datetime, timezone
 from pathlib import Path
 
+from dbw import subscribers
 from dbw.providers.base import BoxStats, NoData
 
 STATS = ("valid_count", "total_count", "mean", "median", "p90", "min", "max")
@@ -48,7 +49,7 @@ def connect(path=None):
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
     conn.execute(SCHEMA)
-    for stmt in SCHEMA_EXTRA:
+    for stmt in SCHEMA_EXTRA + subscribers.SCHEMA:
         conn.execute(stmt)
     conn.commit()
     return conn
