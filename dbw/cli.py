@@ -10,8 +10,9 @@ import urllib.parse
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from dbw import assess, bot, bot_service, climatology, config, i18n, pctl_export, registry, report, schedule, store, subscribers
+from dbw import assess, bot, bot_service, climatology, config, deliver, i18n, pctl_export, registry, report, schedule, store, subscribers
 from dbw.channels import telegram
+from dbw.i18n import Msg
 from dbw.providers import build_providers, gibs, noaa_erddap
 from dbw.providers.base import BoxStats, FetchError, NoData, UpstreamUnreachable
 
@@ -126,10 +127,14 @@ def _run(args):
     cfg = _load_config(args)
     if cfg is None and not args.date and not args.no_report:
         raise SystemExit(f"no {args.config}: run `dbw setup` first")
-    plants = _csv(args.plants) or (cfg or {}).get("plants")
-    boxes = select_boxes(registry.load(), plants)
-    t0 = time.monotonic()
     conn = store.connect()
+    all_boxes = registry.load()
+    plants = _csv(args.plants) or (cfg or {}).get("plants")
+    if plants and not args.plants and not args.date:  # the daily run also fetches the plants subscribers chose
+        known = {b.id for b in all_boxes if b.kind == "plant"}
+        plants = list(dict.fromkeys([*plants, *(p for p in subscribers.wanted_plants(conn) if p in known)]))
+    boxes = select_boxes(all_boxes, plants)
+    t0 = time.monotonic()
     down = []
     if args.date:
         for line in run_day(conn, boxes, providers, day, down):
@@ -160,6 +165,8 @@ def _run(args):
     reasons = [schedule.UPSTREAM] if upstream else []
     if sending and not _send_telegram(cfg, args.config, files):
         reasons.append(schedule.TELEGRAM)
+    if not args.date:  # a dated re-run never sends to subscribers
+        reasons += _send_subscribers(conn, cfg, args.config, day, out, basemap, args.mode, upstream)
     return schedule.partial(*reasons) if reasons else schedule.OK
 
 
@@ -218,6 +225,32 @@ def _send_telegram(cfg, config_path, files):
         else:
             print(f"telegram: sent to {chat}")
     return ok
+
+
+def _send_subscribers(conn, cfg, config_path, day, out, basemap, mode, upstream):
+    """Today's report to every subscriber who has not had it yet (dbw/deliver.py). -> [partial reason] or []."""
+    if not subscribers.active(conn):
+        return []
+    due = [s for s in subscribers.active(conn) if s.last_sent != day.isoformat()]
+    try:
+        token = _telegram_token(config_path)
+    except telegram.TelegramError as e:
+        print(f"subscribers: failed: {e}")
+        return [schedule.telegram_failed_for(len(due), len(due))] if due else []
+    lang = config.report_language(cfg)
+
+    def notify(code, **params):
+        for admin in config.telegram_admin_ids(cfg):
+            try:
+                telegram.send_message(token, admin, Msg(code, **params).render(lang))
+            except Exception as e:
+                print(f"telegram: admin {admin} not told: {telegram.redact(e, token)}")
+
+    done = deliver.deliver(conn, registry.load(), day, out, {"telegram": deliver.telegram_sender(token)}, notify,
+                           basemap=basemap, mode=mode, upstream=upstream)
+    print(f"subscribers: sent {done.sent} of {done.total}" + (f", {done.removed} removed" if done.removed else "")
+          + (f", {done.failed} failed" if done.failed else ""))
+    return [schedule.telegram_failed_for(done.failed, done.total)] if done.failed else []
 
 
 def cmd_report(args):
