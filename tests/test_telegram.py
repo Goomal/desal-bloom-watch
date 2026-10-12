@@ -252,3 +252,57 @@ def test_an_invalid_request_error_that_quotes_the_url_is_redacted(monkeypatch):
     with pytest.raises(telegram.TelegramError) as e:
         telegram.send_message(TOKEN, "42", "hi")
     assert TOKEN not in str(e.value) and str(e.value).startswith("sendMessage: invalid request")
+
+
+# --- buttons, callbacks, offset -------------------------------------------------------------------------------
+
+def test_a_telegram_error_carries_the_http_status(http):
+    http.script = [fail(403, "Forbidden: bot was blocked by the user")]
+    with pytest.raises(telegram.TelegramError) as e:
+        telegram.send_message(TOKEN, "42", "hi")
+    assert e.value.code == 403
+
+
+def test_get_updates_keeps_its_old_body_and_can_long_poll_from_an_offset(http):
+    telegram.get_updates(TOKEN)
+    telegram.get_updates(TOKEN, offset=7, timeout=telegram.LONG_POLL)
+    assert [json.loads(c.body) for c in http.calls] == [{"timeout": 0}, {"timeout": 25, "offset": 7}]
+    assert telegram.LONG_POLL < telegram.TIMEOUT  # the HTTP read must outlast the long poll
+
+
+def test_send_buttons_posts_an_inline_keyboard(http):
+    http.script = [(200, {"ok": True, "result": {"message_id": 9}})]
+    sent = telegram.send_buttons(TOKEN, 42, "Pick", [[("Hadera", "p:hadera")], [("Done", "p:done")]])
+    assert sent == {"message_id": 9}
+    assert json.loads(http.calls[0].body) == {"chat_id": "42", "text": "Pick", "reply_markup": {"inline_keyboard": [
+        [{"text": "Hadera", "callback_data": "p:hadera"}], [{"text": "Done", "callback_data": "p:done"}]]}}
+
+
+def test_callback_data_over_64_bytes_is_refused_before_sending(http):
+    with pytest.raises(ValueError, match="64"):
+        telegram.send_buttons(TOKEN, 42, "Pick", [[("x", "p:" + "a" * 63)]])
+    assert http.calls == []
+
+
+def test_edit_buttons_ignores_message_is_not_modified_only(http):
+    http.script = [fail(400, "Bad Request: message is not modified"), fail(400, "Bad Request: message to edit not found")]
+    telegram.edit_buttons(TOKEN, 42, 9, "Pick", [])
+    with pytest.raises(telegram.TelegramError, match="not found"):
+        telegram.edit_buttons(TOKEN, 42, 9, "Pick", [])
+    assert http.calls[0].method == "editMessageText"
+    assert json.loads(http.calls[0].body) == {"chat_id": "42", "message_id": 9, "text": "Pick",
+                                              "reply_markup": {"inline_keyboard": []}}
+
+
+def test_answer_callback_with_and_without_a_toast(http):
+    telegram.answer_callback(TOKEN, "cb1")
+    telegram.answer_callback(TOKEN, "cb2", "Tick at least one plant.")
+    assert [json.loads(c.body) for c in http.calls] == [
+        {"callback_query_id": "cb1"}, {"callback_query_id": "cb2", "text": "Tick at least one plant."}]
+
+
+def test_chat_name_is_the_rule_chats_from_updates_uses():
+    assert telegram.chat_name({"title": "Plant ops", "first_name": "x"}) == "Plant ops"
+    assert telegram.chat_name({"first_name": "A", "last_name": "B"}) == "A B"
+    assert telegram.chat_name({"username": "ab"}) == "@ab"
+    assert telegram.chat_name({}) == ""
