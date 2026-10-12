@@ -138,3 +138,30 @@ another one later, plus its own webhook receiver.
 2. Write the implementation plan (superpowers `writing-plans`), then build it on a feature branch.
 3. Before testing it for real: create the bot with @BotFather, put `DBW_TELEGRAM_TOKEN` in `.env`, and set
    `admin_ids`.
+
+## Fact ownership
+
+Each fact lives in one place; everything else reads it from there.
+
+| Fact | Existing surfaces | Owner |
+|---|---|---|
+| Who is subscribed, to which plants, in which language | none (grep: `subscriber`) | `subscribers` table (new `dbw/subscribers.py`) |
+| Chats that have messaged the bot | `dbw/channels/telegram.py` (chats_from_updates, read at setup only) | `contacts` table, written by `dbw bot` |
+| Where a chat is in a questionnaire | none (grep: `conversation`) | `conversations` table |
+| Which Telegram updates were handled | none (grep: `offset`) | `bot_state` table (`telegram_offset`) |
+| Who the admin is | `dbw/config.py` (channels.telegram) | `config.yaml` `channels.telegram.admin_ids` |
+| The admin's own report chats | `dbw/config.py` (telegram_chat_ids) | `config.yaml` `channels.telegram.chat_ids` (unchanged) |
+| The bot token | `dbw/channels/telegram.py` (load_token) | `.env` `DBW_TELEGRAM_TOKEN` (unchanged) |
+| Report content per plants and language | `dbw/report.py` (build_report, write_report) | `dbw/report.py` (unchanged) |
+| Result of a daily run | `dbw/schedule.py` (run_logged, partial) | `data/dbw-run.log` RESULT line |
+
+## Invariants
+
+I1 A chat has at most one active subscription at a time.
+I2 A subscriber gets at most one daily report per day, and a dated `dbw run --date` never sends to subscribers.
+I3 One subscriber's failed send never stops the others; the run is then "partial: telegram failed for N of M".
+I4 Telegram error 403 removes the subscriber and tells the admin.
+I5 Only an `admin_ids` user can run `/add`, `/list`, the admin `/remove`, or press the admin's buttons.
+I6 Only one `dbw bot` polls Telegram at a time.
+I7 The bot token never appears in a log line or an error message.
+I8 The admin's own report (`chat_ids`, the files in `reports/`) is unchanged by subscriptions.
