@@ -99,3 +99,19 @@ def test_msg_survives_copy():
 def test_unknown_language_is_an_error():
     with pytest.raises(ValueError):
         i18n.load("fr")
+
+
+BOT_KEYS = ("bot.ask_name", "bot.bad_name", "bot.ask_plants", "bot.done", "bot.need_plant", "bot.confirm", "bot.yes",
+            "bot.no", "bot.subscribed", "bot.cancelled", "bot.menu", "bot.change_plants", "bot.change_lang", "bot.stop",
+            "bot.saved", "bot.stop_confirm", "bot.stopped", "bot.not_subscribed", "bot.removed_by_admin", "bot.expired",
+            "bot.help", "bot.admin_only", "bot.admin_help", "bot.admin_new", "bot.admin_left", "bot.admin_blocked",
+            "bot.remove", "bot.add_pick", "bot.add_none", "bot.this_chat", "bot.remove_pick", "bot.remove_confirm",
+            "bot.admin_removed", "bot.admin_added", "bot.list_empty", "bot.list_line", "bot.already")
+
+
+def test_the_bot_speaks_all_three_languages():
+    for lang in LANGS:
+        s = i18n.load(lang)["strings"]
+        assert [k for k in BOT_KEYS if k not in s] == [], lang
+    he = i18n.Msg("bot.confirm", name="Dana", plants=["Hadera", "Ashkelon"], language="English").render("he")
+    assert "Dana" in he and "Hadera" in he and "Ashkelon" in he
