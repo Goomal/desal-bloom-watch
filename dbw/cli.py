@@ -1,4 +1,4 @@
-"""dbw command line: run, backfill, score, hindcast, report, setup, schedule, telegram, send-test, plants, skill, doctor."""
+"""dbw command line: run, backfill, score, hindcast, report, setup, schedule, telegram, send-test, bot, subscribers, plants, skill, doctor."""
 import argparse
 import dataclasses
 import json
@@ -10,7 +10,7 @@ import urllib.parse
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from dbw import assess, climatology, config, i18n, pctl_export, registry, report, schedule, store
+from dbw import assess, bot, climatology, config, i18n, pctl_export, registry, report, schedule, store, subscribers
 from dbw.channels import telegram
 from dbw.providers import build_providers, gibs, noaa_erddap
 from dbw.providers.base import BoxStats, FetchError, NoData, UpstreamUnreachable
@@ -587,6 +587,38 @@ def cmd_hindcast(args):
     return 0 if ok else 1
 
 
+def _bot_run(args):
+    cfg = _load_config(args)
+    if cfg is None:
+        raise SystemExit(f"no {args.config}: run `dbw setup` first")
+    admins = config.telegram_admin_ids(cfg)
+    if not admins:
+        print("note: channels.telegram.admin_ids is not set, so nobody can use /add, /remove or /list "
+              "(run `dbw telegram admin-id --write`)", flush=True)
+    try:
+        token = _telegram_token(args.config)
+    except telegram.TelegramError as e:
+        raise SystemExit(str(e))
+    try:
+        lock = bot.acquire_lock(bot.lock_path())
+    except bot.BotError as e:
+        raise SystemExit(str(e))
+    log = bot.file_log(args.log, token) if args.log else bot.print_log(token)
+    try:
+        conn = store.connect()
+        conn.execute("PRAGMA busy_timeout = 30000")  # wait out the daily run's writes rather than fail at once
+        bot.run(bot.Bot(conn, token, admins, config.report_language(cfg), log=log), log)
+    except KeyboardInterrupt:
+        log("dbw bot stop")
+    finally:
+        lock.close()
+    return 0
+
+
+def cmd_bot(args):
+    return _bot_run(args)
+
+
 def cmd_doctor(args):
     ok = True
 
@@ -702,6 +734,11 @@ def main(argv=None):
     st.add_argument("--latest", action="store_true", help="also send the newest report's short message and HTML file")
     st.add_argument("--config", default=str(config.DEFAULT_PATH), help="config.yaml (default ./config.yaml)")
     st.set_defaults(func=cmd_send_test)
+    bt = sub.add_parser("bot", help="the Telegram sign-up bot: run it here, or install it to start at login")
+    bt.add_argument("action", nargs="?", default="run", choices=("run",))
+    bt.add_argument("--log", help="append the bot's lines to this file (the installed bot uses data/dbw-bot.log)")
+    bt.add_argument("--config", default=str(config.DEFAULT_PATH), help="config.yaml (default ./config.yaml)")
+    bt.set_defaults(func=cmd_bot)
     pl = sub.add_parser("plants", help="list the plants, grouped by sea, north to south")
     pl.add_argument("--json", action="store_true", help="machine-readable output")
     pl.set_defaults(func=cmd_plants)

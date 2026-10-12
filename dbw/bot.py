@@ -2,7 +2,13 @@
 and the admin (/add, /remove, /list). It never sends the daily report: `dbw run` does. All state lives in the
 database (dbw/subscribers.py), so a restart loses nobody's place. All Telegram access goes through
 dbw/channels/telegram.py, whose `_http` is the one seam the tests replace."""
-from dbw import i18n, registry, subscribers
+import os
+import sqlite3
+import time
+from datetime import datetime
+from pathlib import Path
+
+from dbw import i18n, registry, store, subscribers
 from dbw.channels import telegram
 from dbw.i18n import Msg
 
@@ -18,6 +24,8 @@ BUTTON_STEP = {"lang": "lang", "p": "plants", "ok": "confirm", "m": "menu", "sto
 ADMIN_FLOWS = ("admin", "add")
 STOP_WORDS = ("/stop", "/remove", "stop")
 ADD_LIST_MAX = 30  # contacts offered by /add, newest first (a longer keyboard is unusable)
+OFFSET_KEY = "telegram_offset"  # bot_state key: the first update not yet handled
+ERROR_WAIT = 5  # seconds the loop waits after Telegram fails (network down, another getUpdates running)
 
 
 class BotError(Exception):
@@ -352,3 +360,114 @@ class Bot:
         self.tell(s.address, self.t(s.language, "bot.removed_by_admin"))
         self.say(cid, self.t(lang, "bot.admin_removed", name=s.name))
         return ""
+
+    # --- the loop -----------------------------------------------------------------------------------------------
+
+    def poll_once(self):
+        """Long-poll Telegram once and answer each update. The offset is saved after each update, so a restart
+        never answers one twice. A busy database stops the batch: that update comes back next poll. -> updates done."""
+        offset = subscribers.get_state(self.conn, OFFSET_KEY)
+        batch = telegram.get_updates(self.token, offset=int(offset) if offset else None, timeout=telegram.LONG_POLL)
+        done = 0
+        for u in batch:
+            try:
+                self.handle(u)
+            except sqlite3.OperationalError as e:
+                if "locked" in str(e) or "busy" in str(e):  # `dbw run` is writing: try this update again next poll
+                    self.log(f"database busy, will retry update {u.get('update_id')}: {e}")
+                    return done
+                self.log(f"update {u.get('update_id')}: failed: {e}")
+            except Exception as e:  # one bad update must never stop the bot
+                self.log(f"update {u.get('update_id')}: failed: {telegram.redact(e, self.token)}")
+            subscribers.set_state(self.conn, OFFSET_KEY, u["update_id"] + 1)
+            done += 1
+        return done
+
+
+def run(bot, log, stop=lambda: False, sleep=time.sleep):
+    """Poll until `stop()` is true (never, for the real bot: it ends with the process). No error ends the loop:
+    under cron @reboot nothing would restart it before the next reboot."""
+    log("dbw bot start")
+    while not stop():
+        try:
+            bot.poll_once()
+        except telegram.TelegramError as e:
+            log(f"telegram: {e}")
+            sleep(ERROR_WAIT)
+        except Exception as e:  # e.g. http.client.IncompleteRead, or the database locked while saving the offset
+            log(f"error: {telegram.redact(e, bot.token)}")
+            sleep(ERROR_WAIT)
+
+
+def lock_path():
+    return store.default_path().parent / "dbw-bot.lock"
+
+
+def _lock(f):
+    if os.name == "nt":
+        import msvcrt
+        f.seek(0)
+        msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+    else:
+        import fcntl
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+class _Lock:
+    """An open, locked file. close() unlocks first: Windows frees a lock left on a closed file only 'at an
+    unspecified time', which would make `lock_held` right after close() flaky."""
+
+    def __init__(self, f):
+        self.f = f
+
+    def close(self):
+        if self.f.closed:
+            return
+        if os.name == "nt":
+            import msvcrt
+            self.f.seek(0)
+            try:
+                msvcrt.locking(self.f.fileno(), msvcrt.LK_UNLCK, 1)
+            except OSError:
+                pass
+        self.f.close()
+
+
+def acquire_lock(path):
+    """Hold `path` locked until the returned lock is closed. The OS drops the lock when the process ends, so a crash
+    never leaves a stale lock."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    f = open(path, "a+")
+    try:
+        _lock(f)
+    except OSError:
+        f.close()
+        raise BotError(f"another dbw bot is already running (lock {path}); stop it first, or see `dbw bot status`") from None
+    return _Lock(f)
+
+
+def lock_held(path):
+    """True when a running bot holds the lock."""
+    if not Path(path).exists():
+        return False
+    try:
+        acquire_lock(path).close()
+    except BotError:
+        return True
+    return False
+
+
+def file_log(path, token):
+    """A log function: one stamped, redacted line per call, appended to `path` (utf-8)."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    def log(line):
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(f"[{datetime.now().astimezone().isoformat(sep=' ', timespec='seconds')}] {telegram.redact(line, token)}\n")
+    return log
+
+
+def print_log(token):
+    return lambda line: print(telegram.redact(line, token), flush=True)
