@@ -159,12 +159,38 @@ def test_a_message_with_no_chat_is_ignored(b, http):
 
 # --- a subscriber -----------------------------------------------------------------------------------------------
 
-def test_start_again_shows_the_menu(b, http):
+@pytest.mark.parametrize("cmd", ["/start", "/edit"])
+def test_start_again_or_edit_shows_the_menu(b, http, cmd):
     sign_up(b)
-    b.handle(msg("/start"))
+    b.handle(msg(cmd))
     body = sent(http)
-    assert buttons(body) == ["m:plants", "m:lang", "m:stop"]
-    assert body["text"] == t("he", "bot.menu", plants=["חדרה", "אשקלון"], language="עברית")
+    assert buttons(body) == ["m:name", "m:plants", "m:lang", "m:stop"]
+    assert body["text"] == t("he", "bot.menu", name="Dana", plants=["חדרה", "אשקלון"], language="עברית")
+
+
+def test_edit_when_not_subscribed_says_so(b, http):
+    b.handle(msg("/edit"))
+    assert last_text(http) == t("en", "bot.not_subscribed") and subs.get_conversation(b.conn, "telegram", str(DANA)) is None
+
+
+def test_a_subscriber_changes_name(b, http):
+    sign_up(b)
+    for u in (msg("/edit"), tap("m:name")):
+        b.handle(u)
+    assert last_text(http) == t("he", "bot.ask_name")
+    b.handle(msg("  Dana  Levi "))
+    assert subs.active(b.conn)[0].name == "Dana Levi" and last_text(http) == t("he", "bot.saved")
+
+
+@pytest.mark.parametrize("text", ["hello", "what is this?", "/nonsense"])
+def test_a_message_the_bot_does_not_understand_gets_the_options(b, http, text):
+    b.handle(msg(text))
+    assert last_text(http) == t("en", "bot.help")
+    sign_up(b, lang="ar")
+    b.handle(msg(text))
+    assert last_text(http) == t("ar", "bot.help")
+    b.handle(msg(text, chat=ADMIN))
+    assert last_text(http, ADMIN) == t("en", "bot.help") + "\n\n" + t("en", "bot.admin_help")
 
 
 def test_a_subscriber_changes_plants(b, http):

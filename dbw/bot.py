@@ -1,4 +1,4 @@
-"""`dbw bot`: the Telegram sign-up bot. It answers people who message it (sign up, change plants or language, stop)
+"""`dbw bot`: the Telegram sign-up bot. It answers people who message it (sign up, change name, plants or language, stop)
 and the admin (/add, /remove, /list). It never sends the daily report: `dbw run` does. All state lives in the
 database (dbw/subscribers.py), so a restart loses nobody's place. All Telegram access goes through
 dbw/channels/telegram.py, whose `_http` is the one seam the tests replace."""
@@ -17,6 +17,7 @@ LANG_PROMPT = "Choose a language · בחרו שפה · اختر اللغة"  # a
 FLOWS = {
     "self": ("lang", "name", "plants", "confirm"),  # a new person, in a private chat
     "admin": ("plants", "lang", "confirm"),  # the admin adding a contact or a group (the name comes from contacts)
+    "name": ("name",),  # a subscriber changing name
     "plants": ("plants",),  # a subscriber changing plants
     "lang": ("lang",),  # a subscriber changing language
 }
@@ -130,8 +131,10 @@ class Bot:
             if s is None:  # removed while the menu was open
                 self.end(cid)
                 return self.start(cid)
-            text = self.t(ui, "bot.menu", plants=self.names(ui, s.plants), language=self.lang_name(s.language))
-            return self.ask(cid, text, [[(self.t(ui, "bot.change_plants"), "m:plants")],
+            text = self.t(ui, "bot.menu", name=s.name, plants=self.names(ui, s.plants),
+                          language=self.lang_name(s.language))
+            return self.ask(cid, text, [[(self.t(ui, "bot.change_name"), "m:name")],
+                                        [(self.t(ui, "bot.change_plants"), "m:plants")],
                                         [(self.t(ui, "bot.change_lang"), "m:lang")], [(self.t(ui, "bot.stop"), "m:stop")]])
         if step == "stop":
             return self.ask(cid, self.t(ui, "bot.stop_confirm"), self.yes_no(ui, "stop"))
@@ -147,6 +150,9 @@ class Bot:
         self.end(cid)
         if s is None:
             return self.say(cid, self.t(data["ui"], "bot.not_subscribed"))
+        if data["flow"] == "name":
+            subscribers.update(self.conn, s.id, name=data["name"])
+            return self.say(cid, self.t(s.language, "bot.saved"))
         if data["flow"] == "plants":
             subscribers.update(self.conn, s.id, plants=data["picked"])
             return self.say(cid, self.t(s.language, "bot.saved"))
@@ -170,8 +176,7 @@ class Bot:
         cmd = text.split()[0].split("@")[0].lower() if text.startswith("/") else ""
         admin = user in self.admins
         if cmd == "/help":
-            lang = self.lang_of(cid, user)
-            return self.say(cid, self.t(lang, "bot.help") + ("\n\n" + self.t(lang, "bot.admin_help") if admin else ""))
+            return self.help(cid, user)
         if cmd in ("/add", "/list") or (cmd == "/remove" and admin):
             if not admin:
                 return self.say(cid, self.t(self.lang_of(cid, user), "bot.admin_only"))
@@ -180,6 +185,8 @@ class Bot:
             return  # in a group the bot answers /help and the admin's commands only
         if cmd == "/start":
             return self.start(cid)
+        if cmd == "/edit":
+            return self.edit(cid)
         if cmd in STOP_WORDS or text.lower() in STOP_WORDS:
             return self.ask_stop(cid)
         step, data = self.load(cid)
@@ -188,7 +195,18 @@ class Bot:
         if step in ("lang", "plants", "confirm", "menu", "stop"):
             return self.prompt(cid, step, data)  # typed while buttons are open: ask again
         self.end(cid)
-        self.start(cid)
+        self.help(cid, user)  # not understood: list what the bot can do
+
+    def help(self, cid, user):
+        lang = self.lang_of(cid, user)
+        self.say(cid, self.t(lang, "bot.help") + ("\n\n" + self.t(lang, "bot.admin_help") if user in self.admins else ""))
+
+    def edit(self, cid):
+        s = self.sub(cid)
+        if s is None:
+            self.end(cid)
+            return self.say(cid, self.t(self.lang_of(cid), "bot.not_subscribed"))
+        self.prompt(cid, "menu", {"flow": "menu", "ui": s.language})
 
     def start(self, cid):
         s = self.sub(cid)
@@ -263,7 +281,9 @@ class Bot:
             if s is None:
                 self.end(cid)
                 return self.t(ui, "bot.not_subscribed")
-            if arg == "plants":
+            if arg == "name":
+                self.prompt(cid, "name", {"flow": "name", "ui": s.language})
+            elif arg == "plants":
                 self.prompt(cid, "plants", {"flow": "plants", "ui": s.language, "picked": list(s.plants)})
             elif arg == "lang":
                 self.prompt(cid, "lang", {"flow": "lang", "ui": s.language})

@@ -95,9 +95,11 @@ People can ask for the daily report themselves. Each one picks plants and a lang
 
 | Who | Sends | What happens |
 |---|---|---|
-| Anyone | `/start` | Sign up; a subscriber gets: change plants, change language, stop |
+| Anyone | `/start` | Sign up; a subscriber gets the `/edit` menu |
+| Anyone | `/edit` | Change name, plants or language, or stop |
 | Anyone | `/stop` | Stop the daily report (asks first) |
 | Anyone | `/help` | Short help in their language |
+| Anyone | anything else | The same help, listing the commands |
 | Admin | `/add` | Add a chat that has messaged the bot; in a group, "This chat" adds the group |
 | Admin | `/remove` | Remove someone (they are told) |
 | Admin | `/list` | Everyone, with plants and language |

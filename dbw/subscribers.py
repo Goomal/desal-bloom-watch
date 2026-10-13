@@ -105,13 +105,15 @@ def active(conn):
     return [_sub(r) for r in conn.execute(f"SELECT {_COLS} FROM subscribers WHERE status=? ORDER BY id", (ACTIVE,))]
 
 
-def update(conn, sub_id, plants=None, language=None):
+def update(conn, sub_id, plants=None, language=None, name=None):
     s = get(conn, sub_id)
+    name = clean_name(name) if name is not None else s.name
     plants = list(plants) if plants is not None else list(s.plants)
     language = language or s.language
     _check(plants, language)
     with conn:
-        conn.execute("UPDATE subscribers SET plants=?, language=? WHERE id=?", (json.dumps(plants), language, sub_id))
+        conn.execute("UPDATE subscribers SET name=?, plants=?, language=? WHERE id=?",
+                     (name, json.dumps(plants), language, sub_id))
     return get(conn, sub_id)
 
 
