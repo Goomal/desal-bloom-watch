@@ -52,6 +52,14 @@ the confidence line shows the age) and a later run picks the slice up.
 - **schtasks** (Windows): the task is created with "run as soon as possible after a scheduled start is missed"
   (`StartWhenAvailable`), so a PC that was asleep or off at 07:00 runs it at the next start or wake. It runs only
   while you are logged on (no stored password, no admin rights).
+- **The bot as a backstop**: when `dbw bot` runs ([telegram.md](telegram.md)), it checks about once a minute whether
+  today's scheduled time has passed without the report going out (the PC was off, or Windows restarted it for an
+  update and nobody logged on until later). If so it starts the daily run itself, writing to the same
+  `data/dbw-run.log`, and tries again at most once an hour until the report is sent.
+- **Never twice**: the scheduled run records the day it sent the report. A second scheduled run that day, from
+  the scheduler catching up or from the bot, stops at once (`RESULT skipped: already sent today`), unless a
+  subscriber is still due, who then gets the report without the configured chats getting it again. Two runs never
+  overlap (`RESULT skipped: another run was going`). A run you start by hand (no `--log`) always runs.
 - **Powered off the whole day** (cron any time, launchd and schtasks too if the machine stays off): that day has no
   run of its own. The next run makes up for it, see "Catch-up".
 

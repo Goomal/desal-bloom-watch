@@ -86,7 +86,7 @@ def test_a_second_run_the_same_day_sends_nothing_new(env, http, monkeypatch):
     run(env, monkeypatch)
     n = len(http.calls)
     rc, log = run(env, monkeypatch)
-    assert len(http.calls) == n and "subscribers: sent 0 of 0" in log
+    assert len(http.calls) == n and log.rstrip().endswith("RESULT skipped: already sent today")
 
 
 def test_a_dated_run_never_sends_to_subscribers(env, http, monkeypatch):

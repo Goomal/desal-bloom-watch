@@ -161,7 +161,7 @@ def test_every_fetching_command_prints_one_plain_line_when_noaa_is_down(env, cap
 
 def test_run_log_gets_the_output_and_a_result_line_and_status_reads_it(env, monkeypatch, capsys):
     env.use(Erddap(last=TODAY - timedelta(days=3)))
-    cli.main(["run", "--config", env.cfg])
+    cli.main(["run", "--config", env.cfg, "--no-report"])  # stores history without sending today's report
     log = env.tmp / "data" / "dbw-run.log"
     env.use(down("HTTP 502"))
     assert cli.main(["run", "--config", env.cfg, "--log", str(log)]) == 0

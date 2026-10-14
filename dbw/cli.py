@@ -4,6 +4,7 @@ import dataclasses
 import json
 import shutil
 import socket
+import subprocess
 import sys
 import time
 import urllib.parse
@@ -22,6 +23,8 @@ CATCHUP_DAYS = 10  # a daily run (no --date) re-fetches this many days back: a s
 CATCHUP_DELAY = 1.0  # seconds between its ERDDAP requests
 NETWORK_WAIT = 300  # a scheduled run that fires as the laptop wakes waits up to this many seconds for the network
 NETWORK_POLL = 15  # seconds between its DNS checks
+SENT_KEY = "report_sent"  # bot_state key: the UTC day whose daily report last reached the configured chats
+MISSED_RETRY = 3600  # the bot starts a missed daily run at most this often (seconds)
 _resolve = socket.getaddrinfo
 _sleep = time.sleep
 TELEGRAM_TEST_TEXT = "Desal Bloom Watch test: the bot can reach this chat."
@@ -78,9 +81,68 @@ def run_day(conn, boxes, providers, day, down=None):
 
 def cmd_run(args):
     if args.log:
-        return schedule.run_logged(args.log, lambda: _run(args))
+        return schedule.run_logged(args.log, lambda: _run_alone(args))
     _run(args)
     return 0
+
+
+def run_lock_path():
+    return store.default_path().parent / "dbw-run.lock"
+
+
+def _run_alone(args):
+    """The scheduled run and the bot's catch-up run never overlap: the second one stops at once."""
+    try:
+        lock = bot.acquire_lock(run_lock_path())
+    except bot.BotError:
+        print("another dbw run is still going: this one stops")
+        return "skipped: another run was going"
+    try:
+        return _run(args)
+    finally:
+        lock.close()
+
+
+def due_today(conn, cfg, day):
+    """True while `day`'s daily report has not gone out: no run sent it to the configured chats (or, with none, wrote
+    it), or an active subscriber has not had it."""
+    if subscribers.get_state(conn, SENT_KEY) != day.isoformat():
+        return True
+    return any(s.last_sent != day.isoformat() for s in subscribers.active(conn))
+
+
+def missed_run_check(cfg, config_path, log, now=None, start=None):
+    """For the bot loop: a function that starts the daily run (`dbw run --log`, as the scheduler does) when today's
+    scheduled time has passed and the report has not gone out, e.g. the PC was off or restarting for an update at
+    that hour. At most one start per MISSED_RETRY seconds. Without a schedule in the config it never starts one."""
+    sched = (cfg or {}).get("schedule") or {}
+    if "time" not in sched:
+        return lambda conn: None
+    at = schedule.parse_time(sched["time"])
+    now = now or (lambda: datetime.now().astimezone())
+    start = start or _start_run
+    tried = []
+
+    def check(conn):
+        t = now()
+        if (t.hour, t.minute) < at or (tried and (t - tried[-1]).total_seconds() < MISSED_RETRY):
+            return
+        day = t.astimezone(timezone.utc).date()
+        if not due_today(conn, cfg, day) or bot.lock_held(run_lock_path()):
+            return
+        tried.append(t)
+        log(f"today's report ({day}) has not gone out: starting the daily run")
+        start(config_path)
+    return check
+
+
+def _start_run(config_path):
+    """Start `dbw run --log data/dbw-run.log` in the background, with no console window."""
+    root = _root()
+    flags = subprocess.CREATE_NO_WINDOW if sys.platform.startswith("win") else 0
+    subprocess.Popen([sys.executable, "-m", "dbw.cli", "run", "--log", str(root / "data" / "dbw-run.log"),
+                      "--config", str(Path(config_path).resolve())], cwd=root, creationflags=flags,
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def _catch_up(conn, boxes, day):
@@ -128,6 +190,10 @@ def _run(args):
     if cfg is None and not args.date and not args.no_report:
         raise SystemExit(f"no {args.config}: run `dbw setup` first")
     conn = store.connect()
+    scheduled = bool(args.log) and not args.date  # the scheduled run, or the bot's catch-up of a missed one
+    if scheduled and cfg is not None and not args.no_report and not due_today(conn, cfg, day):
+        print(f"today's report ({day}) has already gone out: nothing to do")
+        return "skipped: already sent today"
     all_boxes = registry.load()
     plants = _csv(args.plants) or (cfg or {}).get("plants")
     if plants and not args.plants and not args.date:  # the daily run also fetches the plants subscribers chose
@@ -163,9 +229,14 @@ def _run(args):
         formats = list(dict.fromkeys([*formats, "html", "txt"]))
     _, files = _emit(conn, day, cfg["plants"], out, formats, basemap, args.mode, config.report_language(cfg), upstream=upstream)
     reasons = [schedule.UPSTREAM] if upstream else []
-    if sending and not _send_telegram(cfg, args.config, files):
+    # a scheduled run that is only here for a subscriber does not send the configured chats the same day twice
+    already = scheduled and subscribers.get_state(conn, SENT_KEY) == day.isoformat()
+    chats_done = already or not sending or _send_telegram(cfg, args.config, files)
+    if not chats_done:
         reasons.append(schedule.TELEGRAM)
     if not args.date:  # a dated re-run never sends to subscribers
+        if chats_done:
+            subscribers.set_state(conn, SENT_KEY, day.isoformat())
         reasons += _send_subscribers(conn, cfg, args.config, day, out, basemap, args.mode, upstream)
     return schedule.partial(*reasons) if reasons else schedule.OK
 
@@ -664,7 +735,8 @@ def _bot_run(args):
     try:
         conn = store.connect()
         conn.execute("PRAGMA busy_timeout = 30000")  # wait out the daily run's writes rather than fail at once
-        bot.run(bot.Bot(conn, token, admins, config.report_language(cfg), log=log), log)
+        bot.run(bot.Bot(conn, token, admins, config.report_language(cfg), log=log), log,
+                check=missed_run_check(cfg, args.config, log))
     except KeyboardInterrupt:
         log("dbw bot stop")
     finally:

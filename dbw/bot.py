@@ -404,11 +404,17 @@ class Bot:
         return done
 
 
-def run(bot, log, stop=lambda: False, sleep=time.sleep):
+def run(bot, log, stop=lambda: False, sleep=time.sleep, check=None):
     """Poll until `stop()` is true (never, for the real bot: it ends with the process). No error ends the loop:
-    under cron @reboot nothing would restart it before the next reboot."""
+    under cron @reboot nothing would restart it before the next reboot. `check(conn)`, when given, runs before each
+    poll (about once a long poll): the CLI uses it to start a daily run the PC missed."""
     log("dbw bot start")
     while not stop():
+        if check:
+            try:
+                check(bot.conn)
+            except Exception as e:
+                log(f"missed-run check: {telegram.redact(e, bot.token)}")
         try:
             bot.poll_once()
         except telegram.TelegramError as e:
