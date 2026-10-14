@@ -7,6 +7,7 @@ import sqlite3
 import pytest
 
 from dbw import bot as botmod, cli, config, registry, store, subscribers as subs
+from dbw.i18n import Msg
 from test_bot import msg
 from test_telegram import TOKEN, Http, fail, http  # noqa: F401
 
@@ -77,7 +78,8 @@ def test_a_database_error_that_is_not_busy_skips_the_update(tmp_path, http, monk
     assert b.poll_once() == 1 and subs.get_state(b.conn, botmod.OFFSET_KEY) == "6"
 
 
-def test_the_loop_waits_after_a_telegram_error_and_goes_on(b, http):
+def test_the_loop_waits_after_a_telegram_error_and_goes_on(b, http, monkeypatch):
+    monkeypatch.setattr(b, "register_commands", lambda: None)  # the script is for getUpdates
     http.script = [fail(409, "Conflict: terminated by other getUpdates request"), updates(numbered(1, msg("/start")))]
     slept, logged, polls = [], [], iter([False, False, True])
     botmod.run(b, logged.append, stop=lambda: next(polls), sleep=slept.append)
@@ -97,6 +99,73 @@ def test_the_loop_survives_an_error_that_is_not_telegrams(b, monkeypatch):
     slept, logged, polls = [], [], iter([False, False, True])
     botmod.run(b, logged.append, stop=lambda: next(polls), sleep=slept.append)
     assert slept == [botmod.ERROR_WAIT] and any("IncompleteRead" in l for l in logged)
+
+
+# --- the "/" menu -----------------------------------------------------------------------------------------------
+
+def menus(http):
+    """{(scope, language_code): [commands]} of every setMyCommands call."""
+    out = {}
+    for c in http.calls:
+        if c.method == "setMyCommands":
+            body = json.loads(c.body)
+            scope = body["scope"].get("chat_id", body["scope"]["type"])
+            out[(scope, body.get("language_code"))] = [x["command"] for x in body["commands"]]
+    return out
+
+
+def test_the_menu_is_set_for_everyone_groups_and_each_admin(tmp_path, http):
+    b = botmod.Bot(store.connect(tmp_path / "t.sqlite"), TOKEN, admin_ids=[999, 888], log=lambda m: None)
+    b.register_commands()
+    m = menus(http)
+    for code in (None, "he", "ar"):
+        assert m[("all_private_chats", code)] == ["start", "edit", "stop", "help"]
+        assert m[("all_group_chats", code)] == ["help"]
+    assert m[(999, None)] == m[(888, None)] == ["start", "edit", "stop", "help", "add", "remove", "list"]
+
+
+def test_the_menu_speaks_each_language(b, http):
+    b.register_commands()
+    bodies = {json.loads(c.body).get("language_code"): json.loads(c.body) for c in http.calls
+              if c.method == "setMyCommands" and json.loads(c.body)["scope"]["type"] == "all_private_chats"}
+    for lang in ("en", "he", "ar"):
+        body = bodies[None if lang == "en" else lang]
+        assert body["commands"][0]["description"] == Msg("bot.cmd_start").render(lang)
+
+
+def test_an_admin_menu_is_in_the_admins_language(tmp_path, http):
+    b = botmod.Bot(store.connect(tmp_path / "t.sqlite"), TOKEN, admin_ids=[999], admin_lang="he", log=lambda m: None)
+    b.register_commands()
+    (body,) = [json.loads(c.body) for c in http.calls if c.method == "setMyCommands"
+               and json.loads(c.body)["scope"].get("chat_id") == 999]
+    assert body["commands"][-1]["description"] == Msg("bot.cmd_list").render("he")
+
+
+def test_a_former_admin_loses_the_admin_menu(tmp_path, http):
+    path = tmp_path / "t.sqlite"
+    botmod.Bot(store.connect(path), TOKEN, admin_ids=[999, 888], log=lambda m: None).register_commands()
+    http.calls.clear()
+    botmod.Bot(store.connect(path), TOKEN, admin_ids=[999], log=lambda m: None).register_commands()
+    assert [json.loads(c.body) for c in http.calls if c.method == "deleteMyCommands"] ==         [{"scope": {"type": "chat", "chat_id": 888}}]
+    http.calls.clear()
+    botmod.Bot(store.connect(path), TOKEN, admin_ids=[999], log=lambda m: None).register_commands()
+    assert not [c for c in http.calls if c.method == "deleteMyCommands"]
+
+
+def test_a_menu_telegram_refuses_is_logged_and_the_rest_still_set(tmp_path, http):
+    logged = []
+    b = botmod.Bot(store.connect(tmp_path / "t.sqlite"), TOKEN, admin_ids=[999], log=logged.append)
+    http.script = [fail(400, "Bad Request: something")]
+    b.register_commands()
+    assert any("not set" in l and "400" in l for l in logged)
+    assert (999, None) in menus(http)
+
+
+def test_the_loop_sets_the_menu_before_polling(b, http):
+    b.admins = {999}
+    botmod.run(b, lambda m: None, stop=iter([False, True]).__next__)
+    methods = [c.method for c in http.calls]
+    assert "setMyCommands" in methods and methods.index("setMyCommands") < methods.index("getUpdates")
 
 
 def test_only_one_bot_at_a_time(tmp_path):

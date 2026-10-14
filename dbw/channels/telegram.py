@@ -226,6 +226,22 @@ def answer_callback(token, callback_id, text=""):
     _call(token, "answerCallbackQuery", json.dumps(body).encode("utf-8"))
 
 
+# --- the "/" command menu -----------------------------------------------------------------------------------
+
+def set_commands(token, commands, scope=None, language_code=None):
+    """The command menu Telegram shows when someone types "/"; commands = [(command, description), ...].
+    `scope` is a BotCommandScope ({"type": "chat", "chat_id": ...}; default: everyone); `language_code` limits it to
+    users whose Telegram is in that language."""
+    body = {"commands": [{"command": c, "description": d} for c, d in commands],
+            **({"scope": scope} if scope else {}), **({"language_code": language_code} if language_code else {})}
+    _call(token, "setMyCommands", json.dumps(body, ensure_ascii=False).encode("utf-8"))
+
+
+def delete_commands(token, scope=None):
+    """Drop the menu set for `scope`; that chat falls back to the wider menu."""
+    _call(token, "deleteMyCommands", json.dumps({**({"scope": scope} if scope else {})}).encode("utf-8"))
+
+
 # --- finding a chat id --------------------------------------------------------------------------------------
 
 def get_updates(token, offset=None, timeout=0):

@@ -27,6 +27,11 @@ STOP_WORDS = ("/stop", "/remove", "stop")
 ADD_LIST_MAX = 30  # contacts offered by /add, newest first (a longer keyboard is unusable)
 OFFSET_KEY = "telegram_offset"  # bot_state key: the first update not yet handled
 ERROR_WAIT = 5  # seconds the loop waits after Telegram fails (network down, another getUpdates running)
+# The "/" menu Telegram shows: (command, description string in dbw/locales). A new command goes here and in `handle`.
+USER_COMMANDS = (("start", "bot.cmd_start"), ("edit", "bot.cmd_edit"), ("stop", "bot.cmd_stop"), ("help", "bot.cmd_help"))
+GROUP_COMMANDS = (("help", "bot.cmd_help"),)  # in a group the bot answers /help only (and the admin's commands)
+ADMIN_COMMANDS = (("add", "bot.cmd_add"), ("remove", "bot.cmd_remove"), ("list", "bot.cmd_list"))
+MENU_ADMINS_KEY = "telegram_menu_admins"  # bot_state key: the chats given the admin menu, so a former admin loses it
 
 
 class BotError(Exception):
@@ -381,6 +386,36 @@ class Bot:
         self.say(cid, self.t(lang, "bot.admin_removed", name=s.name))
         return ""
 
+    # --- the "/" menu -------------------------------------------------------------------------------------------
+
+    def menu(self, lang, commands):
+        return [(c, self.t(lang, code)) for c, code in commands]
+
+    def register_commands(self):
+        """Tell Telegram the "/" menu: the user commands in private chats (in each language, English when Telegram's
+        is another), /help in groups, and the user + admin commands in each admin's own chat. A failure is logged,
+        never raised: the bot works without a menu."""
+        calls = []
+        for lang in i18n.LANGUAGES:
+            code = None if lang == i18n.DEFAULT else lang
+            calls.append((self.menu(lang, USER_COMMANDS), {"type": "all_private_chats"}, code))
+            calls.append((self.menu(lang, GROUP_COMMANDS), {"type": "all_group_chats"}, code))
+        for a in sorted(self.admins):
+            calls.append((self.menu(self.lang_of(a, a), USER_COMMANDS + ADMIN_COMMANDS), {"type": "chat", "chat_id": a},
+                          None))
+        for commands, scope, code in calls:
+            try:
+                telegram.set_commands(self.token, commands, scope, code)
+            except telegram.TelegramError as e:
+                self.log(f"command menu {scope.get('chat_id', scope['type'])}: not set ({e})")
+        before = subscribers.get_state(self.conn, MENU_ADMINS_KEY) or ""
+        for a in sorted({int(x) for x in before.split(",") if x} - self.admins):
+            try:
+                telegram.delete_commands(self.token, {"type": "chat", "chat_id": a})
+            except telegram.TelegramError as e:
+                self.log(f"command menu {a}: admin menu not removed ({e})")
+        subscribers.set_state(self.conn, MENU_ADMINS_KEY, ",".join(str(a) for a in sorted(self.admins)))
+
     # --- the loop -----------------------------------------------------------------------------------------------
 
     def poll_once(self):
@@ -409,6 +444,10 @@ def run(bot, log, stop=lambda: False, sleep=time.sleep, check=None):
     under cron @reboot nothing would restart it before the next reboot. `check(conn)`, when given, runs before each
     poll (about once a long poll): the CLI uses it to start a daily run the PC missed."""
     log("dbw bot start")
+    try:
+        bot.register_commands()
+    except Exception as e:  # e.g. the database locked while saving: the menu is a convenience, the loop is not
+        log(f"command menu: {telegram.redact(e, bot.token)}")
     while not stop():
         if check:
             try:

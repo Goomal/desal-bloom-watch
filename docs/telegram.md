@@ -104,6 +104,12 @@ People can ask for the daily report themselves. Each one picks plants and a lang
 | Admin | `/remove` | Remove someone (they are told) |
 | Admin | `/list` | Everyone, with plants and language |
 
+The bot fills Telegram's "/" menu itself each time it starts: the user commands in each language (by the person's
+Telegram language), `/help` in groups, and the admin commands too in each admin's own chat. To add a command, add it
+to `USER_COMMANDS` or `ADMIN_COMMANDS` in `dbw/bot.py` (with a `bot.cmd_<name>` description in each
+`dbw/locales/*.json`) and handle it in `Bot.handle`. Telegram may take a minute, or reopening the chat, to show a
+changed menu.
+
 On the computer: `dbw subscribers list`, `dbw subscribers add` (asks in the terminal, from the chats that messaged
 the bot), `dbw subscribers remove <id>` (does not tell them), `dbw subscribers export` (a JSON backup in `data/`).
 
